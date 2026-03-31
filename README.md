@@ -51,5 +51,25 @@ DoOver，愿做你青春回忆录里的最后一章。
 让你知道，那条没走的路，或许并不如想象中美好；  
 让你知道，现在的你，比任何时候都更懂得如何去爱。
 
-> 别让你的青春，只留在回忆里。  
-> 打开 DoOver，给那个夏天的自己，写一封迟到的信。
+
+
+## ⭐ Star History
+
+> [!TIP]
+> 如果本项目对您的生活 / 工作产生了帮助，或者您关注本项目的未来发展，请给项目 Star，这是我们维护这个开源项目的动力 <3
+
+<div align="center">
+
+<a href="https://www.star-history.com/?repos=Radiant303%2FDoOver&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=Radiant303/DoOver&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=Radiant303/DoOver&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=Radiant303/DoOver&type=date&legend=top-left" />
+ </picture>
+</a>
+</div>
+<div align="center">
+
+别让你的青春，只留在回忆里。  
+打开 DoOver，给那个夏天的自己，写一封迟到的信。
+</div>
