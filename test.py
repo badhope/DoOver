@@ -1,7 +1,12 @@
-from llm.client import load_active_llm
+from utils.ip_utils import get_country_by_ip
 
-model = load_active_llm()
+import asyncio
 
-res = model.bind_tools
+async def main():
+    print("正在查询当前 IP 归属地...")
+    result = await get_country_by_ip()
+    print(f"查询结果: {result}")
 
-print(res)
+# 运行入口
+if __name__ == "__main__":
+    asyncio.run(main())
