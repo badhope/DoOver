@@ -1,0 +1,24 @@
+{
+  "active_llm_provider": "stepfun",
+  "active_llm_model": "step-3.5-flash",
+  "llm_providers": {
+    "moonshot": {
+      "type": "moonshot",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key": "sk-***********************************",
+      "models": ["kimi-k2.5"]
+    },
+    "openai": {
+      "type": "openai",
+      "base_url": "https://api.ikuncode.cc/v1",
+      "api_key": "sk-***********************************",
+      "models": ["gpt-5.4"]
+    },
+    "stepfun": {
+      "type": "openai",
+      "base_url": "https://api.stepfun.com/v1",
+      "api_key": "***********************************",
+      "models": ["step-3.5-flash"]
+    }
+  }
+}
