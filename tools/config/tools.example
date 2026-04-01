@@ -6,7 +6,7 @@
     },
     "tavily": {
       "base_url": "https://api.tavily.com/search",
-      "api_key": "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"
+      "api_key": "******************************"
     }
   }
 }
