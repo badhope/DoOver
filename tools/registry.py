@@ -15,6 +15,13 @@ active_providers = config.get("search", {}).get("active_search_provider", {})
 tools_map = {
         "baidu": search_from_baidu
     }
+
+search_tool = tools_map[active_providers]
+
 active_tools.append(tools_map[active_providers])
 
 
+__all__ = [
+    "search_tool",
+    "active_tools"
+]

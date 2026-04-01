@@ -1,17 +1,22 @@
-from state import AgentState
+from graph.state import AgentState
 from time import time as get_current_time
-from loguru import logger
+from utils.logger import logger
 from utils.ip_utils import get_country_by_ip
 from typing import Any
 import json
 from langchain_core.messages import AIMessage
 
 from llm.service import get_model
+from tools.registry import search_tool
 from graph.prompts import prompt_template
 #初始化世界参数
 async def init_world_params(state: AgentState) -> AgentState:
     time = get_current_time()
     country = await get_country_by_ip()
+    logger.info("init_world_params:",{"world_info": {
+        "time": time,
+        "country": country,
+    }})
     return {"world_info": {
         "time": time,
         "country": country,
@@ -22,6 +27,7 @@ async def intake_node(state: AgentState) -> AgentState:
     raw_input = state.get("raw_input")
     if not raw_input:
         raise ValueError("raw_input is required")
+    logger.info("intake_node:",{"raw_input": raw_input})
     return {"raw_input": raw_input.strip()}
 
 # 背景信息提取
@@ -34,14 +40,19 @@ async def background_node(state: AgentState) -> dict[str, Any]:
     async for chunk in model.astream(prompt):
         text = chunk.content if hasattr(chunk, "content") else str(chunk)
         chunks.append(text)
-
-        # TODO: 推给前端
-        # 这里不是 return
-        # 而是通过 graph stream / callback / websocket 把 text 推给前端
+        logger.print(text, end="")
 
     final_text = "".join(chunks)
     return {"structured_scenario": final_text}
-
+async def agent_node(state: AgentState):
+    """
+    【新增节点】：这是 ReAct 循环的大脑。
+    负责调用 LLM，LLM 决定是回答还是调用工具。
+    """
+    model = get_model().bind_tools([search_tool])
+    response = await model.ainvoke(state.get("messages",""))
+    logger.info("agent_node:",{"messages": [response]})
+    return {"messages": [response]}
 # 判断是否继续
 def should_continue(state: AgentState):
     messages = state.get("messages", [])

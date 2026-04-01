@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 流式输出演示</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            padding-top: 50px;
+            margin: 0;
+        }
+        .chat-container {
+            width: 90%;
+            max-width: 800px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+        .header {
+            padding: 20px;
+            background: #4a90e2;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status {
+            font-size: 0.85em;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+        #ai-output {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            font-size: 1.1em;
+            line-height: 1.8;
+            color: #333;
+        }
+        .placeholder {
+            color: #888;
+        }
+        .message {
+            margin-bottom: 20px;
+        }
+        .message.user {
+            text-align: right;
+            margin-bottom: 10px;
+        }
+        .message-label {
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .message-lines {
+            white-space: pre;
+        }
+        .message-line {
+            display: block;
+            min-height: 1em;
+        }
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background-color: #4a90e2;
+            animation: blink 1s infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .controls {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            outline: none;
+        }
+        button {
+            padding: 12px 24px;
+            background: #4a90e2;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.2s;
+        }
+        button:hover { background: #357abd; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+<div class="chat-container">
+    <div class="header">
+        <h2>AI 实时流式对话</h2>
+        <span id="status" class="status">未连接</span>
+    </div>
+
+    <div id="ai-output">
+        <span class="placeholder">等待连接... <span class="cursor"></span></span>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="msg-input" placeholder="输入消息..." disabled>
+        <button id="send-btn" disabled>发送</button>
+    </div>
+</div>
+
+<script type="module">
+    import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext';
+
+    const WS_URL = 'ws://localhost:8765';
+    const outputDiv = document.getElementById('ai-output');
+    const statusSpan = document.getElementById('status');
+    const inputField = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    let socket;
+    let currentResponseDiv = null;
+    const renderedBlocks = new Set();
+
+    function getFontShorthand(element) {
+        const style = getComputedStyle(element);
+        return `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    }
+
+    function getLineHeight(element) {
+        const style = getComputedStyle(element);
+        const lineHeight = parseFloat(style.lineHeight);
+        const fontSize = parseFloat(style.fontSize);
+        return Number.isFinite(lineHeight) ? lineHeight : fontSize * 1.2;
+    }
+
+    function renderPretextBlock(block) {
+        const content = block.querySelector('.message-lines');
+        if (!content) return;
+
+        const rawText = block.dataset.text ?? '';
+        const width = Math.max(content.clientWidth, 1);
+        const font = getFontShorthand(content);
+        const lineHeight = getLineHeight(content);
+        const prepared = prepareWithSegments(rawText, font, { whiteSpace: 'pre-wrap' });
+        const { lines } = layoutWithLines(prepared, width, lineHeight);
+
+        content.innerHTML = '';
+
+        if (lines.length === 0) {
+            const emptyLine = document.createElement('div');
+            emptyLine.className = 'message-line';
+            emptyLine.textContent = '\u00a0';
+            content.appendChild(emptyLine);
+        } else {
+            for (const line of lines) {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'message-line';
+                lineDiv.textContent = line.text || '\u00a0';
+                content.appendChild(lineDiv);
+            }
+        }
+
+        if (block.dataset.streaming === 'true') {
+            const cursor = document.createElement('span');
+            cursor.className = 'cursor';
+            content.appendChild(cursor);
+        }
+    }
+
+    function rerenderAllBlocks() {
+        renderedBlocks.forEach(renderPretextBlock);
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    function createMessageBlock(label, className) {
+        const block = document.createElement('div');
+        block.className = `message ${className}`.trim();
+        block.innerHTML = `
+            <div class="message-label">${label}</div>
+            <div class="message-lines"></div>
+        `;
+        block.dataset.text = '';
+        block.dataset.streaming = 'false';
+        outputDiv.appendChild(block);
+        renderedBlocks.add(block);
+        return block;
+    }
+
+    function connect() {
+        statusSpan.textContent = '正在连接...';
+        statusSpan.style.color = '#f39c12';
+
+        try {
+            socket = new WebSocket(WS_URL);
+
+            socket.onopen = () => {
+                statusSpan.textContent = '已连接';
+                statusSpan.style.color = '#27ae60';
+                inputField.disabled = false;
+                sendBtn.disabled = false;
+                inputField.focus();
+                outputDiv.innerHTML = '';
+                renderedBlocks.clear();
+                currentResponseDiv = null;
+            };
+
+            socket.onmessage = (event) => {
+                if (!currentResponseDiv) {
+                    currentResponseDiv = createMessageBlock('AI:', '');
+                    currentResponseDiv.dataset.streaming = 'true';
+                }
+
+                currentResponseDiv.dataset.text += event.data;
+                renderPretextBlock(currentResponseDiv);
+                outputDiv.scrollTop = outputDiv.scrollHeight;
+            };
+
+            socket.onclose = () => {
+                statusSpan.textContent = '连接已断开';
+                statusSpan.style.color = '#e74c3c';
+                inputField.disabled = true;
+                sendBtn.disabled = true;
+            };
+
+            socket.onerror = (err) => {
+                console.error('连接错误:', err);
+                statusSpan.textContent = '连接错误';
+            };
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function sendMessage() {
+        const text = inputField.value.trim();
+        if (!text || !socket) return;
+
+        if (currentResponseDiv) {
+            currentResponseDiv.dataset.streaming = 'false';
+            renderPretextBlock(currentResponseDiv);
+            currentResponseDiv = null;
+        }
+
+        const userDiv = createMessageBlock('我:', 'user');
+        userDiv.dataset.text = text;
+        renderPretextBlock(userDiv);
+
+        socket.send(text);
+        inputField.value = '';
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputField.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') sendMessage();
+    });
+    window.addEventListener('resize', rerenderAllBlocks);
+
+    connect();
+</script>
+</body>
+</html>

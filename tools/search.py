@@ -1,5 +1,5 @@
 import aiohttp
-from loguru import logger
+from utils.logger import logger
 from pathlib import Path
 from langchain.tools import tool 
 import json

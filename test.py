@@ -1,62 +1,44 @@
 import asyncio
 
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.messages.ai import AIMessageChunk
+from langgraph.graph import END, StateGraph
+from langgraph.prebuilt import ToolNode
 
-from llm.service import get_model
-from tools.search import search_from_baidu
-
+from graph.nodes import background_node, init_world_params, intake_node, should_continue,agent_node
+from graph.state import AgentState
 from tools.registry import active_tools
 
-from loguru import logger
-tools_by_name = {
-    "search_from_baidu": search_from_baidu,
-}
+graph = StateGraph(AgentState)
 
+graph.add_node("init_world_params", init_world_params)
+graph.add_node("intake_node", intake_node)
+graph.add_node("background_node", background_node)
+graph.add_node("should_continue", should_continue)
+graph.add_node("tool_node", ToolNode(tools=active_tools))
+graph.add_node("agent", agent_node)
 
-async def stream_once(model, messages):
-    full_chunk = None
+graph.set_entry_point("init_world_params")
 
-    async for chunk in model.astream(messages):
-        if isinstance(chunk, AIMessageChunk):
-            logger.info(chunk.tool_calls)
-            if chunk.content:
-                print(chunk.content, end="", flush=True)
+state: AgentState = {"raw_input": input("请输入你的经历: ")}
 
-            if full_chunk is None:
-                full_chunk = chunk
-            else:
-                full_chunk += chunk
+graph.add_edge("init_world_params", "intake_node")
+graph.add_edge("intake_node", "background_node")
+graph.add_edge("background_node", "agent")
+graph.add_conditional_edges(
+    "tool_node",
+    should_continue,
+    {
+        "continue": "background_node",
+        "end": END,
+    },
+)
+graph.add_edge("tool_node", "agent") 
+app = graph.compile()
 
-    print()
-    return full_chunk
+async def run_doc():
 
-
-async def main():
-    model = get_model()
-    model = model.bind_tools(active_tools)
-    messages = [HumanMessage(content="请调用 search_from_baidu 工具搜索 2025年大事件，并基于结果给我总结。")]
-
-    while True:
-        ai_msg = await stream_once(model, messages)
-        if ai_msg is None:
-            break
-
-        messages.append(ai_msg)
-
-        if not getattr(ai_msg, "tool_calls", None):
-            break
-
-        for call in ai_msg.tool_calls:
-            tool = tools_by_name[call["name"]]
-            tool_result = await tool.ainvoke(call["args"])
-            messages.append(
-                ToolMessage(
-                    content=tool_result,
-                    tool_call_id=call["id"],
-                )
-            )
-
+    async for step in app.astream(state,stream_mode="values"):
+        if "messages" in step:
+            print(step["messages"])
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_doc())
