@@ -7,15 +7,9 @@ from typing import Any
 
 from llm.provider.kimi_llm import create_moonshot_llm
 from llm.provider.openai_llm import create_openai_llm
-
+from utils.load_config import load_json_config
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config" / "provider.json"
-
-
-def load_llm_config(config_path: str | Path = CONFIG_PATH) -> dict[str, Any]:
-    with Path(config_path).open("r", encoding="utf-8") as f:
-        return json.load(f)
-
 
 def _get_active_provider_config(config: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
     provider_name = config["active_llm_provider"]
@@ -36,7 +30,7 @@ def _get_active_provider_config(config: dict[str, Any]) -> tuple[str, str, dict[
 
 
 def load_active_llm(config: dict[str, Any] | None = None) -> BaseChatModel:
-    config = config or load_llm_config()
+    config = config or load_json_config(CONFIG_PATH)
     provider_name, model_name, provider_config = _get_active_provider_config(config)
 
     api_key = provider_config["api_key"]

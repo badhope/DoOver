@@ -1,0 +1,8 @@
+{
+  "search": {
+    "active_search_provider": "baidu",
+    "baidu": {
+      "api_key": "*****************************************"
+    }
+  }
+}
