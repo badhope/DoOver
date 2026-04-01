@@ -1,5 +1,13 @@
 from langchain_core.language_models import BaseChatModel
 from llm.client import load_active_llm
+from loguru import logger
+
 
 def get_model() -> BaseChatModel:
-    return load_active_llm()
+    try:
+        model = load_active_llm()
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load active llm: {e}")
+        raise
+
