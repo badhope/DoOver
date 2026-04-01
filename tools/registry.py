@@ -3,7 +3,7 @@ from pathlib import Path
 from langchain.tools import tool 
 import json
 from utils.load_config import load_json_config
-from tools.search import search_from_baidu
+from tools.search import search_from_baidu, search_from_tavily
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config" / "tools.json"
 config = load_json_config(CONFIG_PATH)
@@ -13,7 +13,8 @@ active_tools = []
 active_providers = config.get("search", {}).get("active_search_provider", {})
 
 tools_map = {
-        "baidu": search_from_baidu
+        "baidu": search_from_baidu,
+        "travily": search_from_tavily
     }
 active_tools.append(tools_map[active_providers])
 

@@ -1,8 +1,12 @@
 {
   "search": {
-    "active_search_provider": "baidu",
+    "active_search_provider": "tavily",
     "baidu": {
-      "api_key": "*****************************************"
+      "api_key": "**************************************"
+    },
+    "tavily": {
+      "base_url": "https://api.tavily.com/search",
+      "api_key": "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"
     }
   }
 }
