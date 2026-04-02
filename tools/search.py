@@ -120,7 +120,8 @@ async def search_from_baidu(query: str) -> str:
     The tool then returns the relevant search results, which the model can process or use for subsequent generation tasks that involve external search data.
     """
     result = await baidu_qianfan_web_search(content=query)
-    logger.info(f"Baidu Search Result: {json.dumps(result, ensure_ascii=False)}")
+    result = result["references"]
+    logger.print(f"Baidu Search Result: {json.dumps(result, ensure_ascii=False)}")
     return json.dumps(result, ensure_ascii=False)
 
 @tool(name_or_callable="web_search",

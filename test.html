@@ -3,275 +3,689 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 流式输出演示</title>
+    <title>DoOver Stream Console</title>
     <style>
+        :root {
+            --bg: #f3efe7;
+            --panel: rgba(255, 252, 246, 0.9);
+            --panel-strong: #fffdf8;
+            --line: rgba(54, 46, 34, 0.12);
+            --text: #2f2921;
+            --muted: #7d7263;
+            --accent: #b95c37;
+            --accent-soft: rgba(185, 92, 55, 0.12);
+            --node: #264653;
+            --node-soft: rgba(38, 70, 83, 0.1);
+            --ok: #2a7f62;
+            --warn: #b7791f;
+            --shadow: 0 20px 60px rgba(64, 43, 20, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f4f9;
-            display: flex;
-            justify-content: center;
-            padding-top: 50px;
             margin: 0;
+            min-height: 100vh;
+            font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(185, 92, 55, 0.14), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(38, 70, 83, 0.14), transparent 32%),
+                linear-gradient(135deg, #f7f1e6 0%, #f1ece4 50%, #e8e3dc 100%);
+            padding: 28px;
         }
-        .chat-container {
-            width: 90%;
-            max-width: 800px;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+
+        .shell {
+            max-width: 1400px;
+            margin: 0 auto;
+            border: 1px solid var(--line);
+            border-radius: 28px;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            height: 80vh;
+            background: rgba(255, 255, 255, 0.52);
+            backdrop-filter: blur(16px);
+            box-shadow: var(--shadow);
         }
-        .header {
-            padding: 20px;
-            background: #4a90e2;
-            color: #fff;
+
+        .topbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 16px;
+            padding: 24px 28px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255,255,255,0.75), rgba(255,255,255,0.45));
         }
-        .status {
-            font-size: 0.85em;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 4px 10px;
-            border-radius: 20px;
+
+        .title-wrap h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: 0.02em;
         }
-        #ai-output {
-            flex: 1;
-            padding: 30px;
-            overflow-y: auto;
-            font-size: 1.1em;
-            line-height: 1.8;
-            color: #333;
+
+        .title-wrap p {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 14px;
         }
-        .placeholder {
-            color: #888;
+
+        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            color: var(--text);
+            font-size: 14px;
         }
-        .message {
-            margin-bottom: 20px;
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--warn);
+            box-shadow: 0 0 0 6px rgba(183, 121, 31, 0.12);
         }
-        .message.user {
-            text-align: right;
-            margin-bottom: 10px;
+
+        .status-chip.connected .status-dot {
+            background: var(--ok);
+            box-shadow: 0 0 0 6px rgba(42, 127, 98, 0.12);
         }
-        .message-label {
+
+        .layout {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            min-height: 78vh;
+        }
+
+        .sidebar {
+            border-right: 1px solid var(--line);
+            background: rgba(255, 250, 243, 0.66);
+            padding: 24px 20px;
+        }
+
+        .panel-title {
+            margin: 0 0 14px;
+            font-size: 13px;
             font-weight: 700;
-            margin-bottom: 6px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--muted);
         }
-        .message-lines {
-            white-space: pre;
+
+        .input-card,
+        .steps,
+        .search-feed {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 16px;
         }
-        .message-line {
-            display: block;
-            min-height: 1em;
+
+        .input-card {
+            margin-bottom: 16px;
         }
-        .cursor {
-            display: inline-block;
-            width: 2px;
-            height: 1.2em;
-            background-color: #4a90e2;
-            animation: blink 1s infinite;
-            vertical-align: middle;
-            margin-left: 2px;
+
+        .input-card .label {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 8px;
         }
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
+
+        .input-card .text {
+            font-size: 15px;
+            line-height: 1.7;
         }
-        .controls {
-            padding: 20px;
-            border-top: 1px solid #eee;
+
+        .steps {
+            margin-bottom: 16px;
+        }
+
+        .step-list {
             display: flex;
+            flex-direction: column;
             gap: 10px;
         }
-        input {
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.65);
+            border: 1px solid transparent;
+            transition: 0.2s ease;
+        }
+
+        .step-item.active {
+            background: var(--node-soft);
+            border-color: rgba(38, 70, 83, 0.18);
+        }
+
+        .step-item.loading .step-bullet {
+            background: transparent;
+            border: 2px solid rgba(38, 70, 83, 0.24);
+            border-top-color: var(--node);
+            animation: spin 0.75s linear infinite;
+            box-shadow: none;
+        }
+
+        .step-bullet {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: #ccb8a5;
+            flex: none;
+        }
+
+        .step-item.active .step-bullet {
+            background: var(--node);
+            box-shadow: 0 0 0 6px rgba(38, 70, 83, 0.12);
+        }
+
+        .step-name {
+            font-size: 14px;
+        }
+
+        .search-feed {
+            max-height: 280px;
+            overflow: auto;
+        }
+
+        .search-item {
+            padding: 12px 0;
+            border-bottom: 1px dashed var(--line);
+        }
+
+        .search-item:last-child {
+            border-bottom: 0;
+        }
+
+        .search-item a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .search-item .meta {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .search-item .snippet {
+            margin-top: 8px;
+            color: #5f5448;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .search-item.loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid rgba(185, 92, 55, 0.18);
+            border-top-color: var(--accent);
+            animation: spin 0.75s linear infinite;
+            flex: none;
+        }
+
+        .main {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .stream {
             flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 1em;
+            padding: 24px;
+            overflow: auto;
+        }
+
+        .stream-grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .card {
+            background: var(--panel-strong);
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            overflow: hidden;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(249,244,237,0.94));
+        }
+
+        .card-head strong {
+            font-size: 16px;
+        }
+
+        .pill {
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            color: var(--node);
+            background: var(--node-soft);
+        }
+
+        .card-body {
+            padding: 18px;
+        }
+
+        .rich-text {
+            white-space: pre-wrap;
+            line-height: 1.85;
+            font-size: 15px;
+            word-break: break-word;
+        }
+
+        .rich-text.streaming::after {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 1.1em;
+            margin-left: 4px;
+            vertical-align: text-bottom;
+            background: var(--accent);
+            animation: blink 1s steps(1) infinite;
+        }
+
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .timeline-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: #fcfaf5;
+            border: 1px solid rgba(54, 46, 34, 0.08);
+        }
+
+        .timeline-item .k {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .timeline-item .v {
+            line-height: 1.75;
+        }
+
+        .composer {
+            display: flex;
+            gap: 12px;
+            padding: 20px 24px 24px;
+            border-top: 1px solid var(--line);
+            background: rgba(255,255,255,0.56);
+        }
+
+        .composer input {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.82);
+            font-size: 15px;
             outline: none;
         }
-        button {
-            padding: 12px 24px;
-            background: #4a90e2;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
+
+        .composer button {
+            border: 0;
+            border-radius: 16px;
+            padding: 0 22px;
+            background: linear-gradient(135deg, #c96b44, #a44a2d);
+            color: white;
+            font-size: 15px;
             cursor: pointer;
-            font-size: 1em;
-            transition: background 0.2s;
         }
-        button:hover { background: #357abd; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-    </style>
-</head>
-<body>
-<div class="chat-container">
-    <div class="header">
-        <h2>AI 实时流式对话</h2>
-        <span id="status" class="status">未连接</span>
-    </div>
 
-    <div id="ai-output">
-        <span class="placeholder">等待连接... <span class="cursor"></span></span>
-    </div>
+        .composer button:disabled,
+        .composer input:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
 
-    <div class="controls">
-        <input type="text" id="msg-input" placeholder="输入消息..." disabled>
-        <button id="send-btn" disabled>发送</button>
-    </div>
-</div>
-
-<script type="module">
-    import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext';
-
-    const WS_URL = 'ws://localhost:8765';
-    const outputDiv = document.getElementById('ai-output');
-    const statusSpan = document.getElementById('status');
-    const inputField = document.getElementById('msg-input');
-    const sendBtn = document.getElementById('send-btn');
-
-    let socket;
-    let currentResponseDiv = null;
-    const renderedBlocks = new Set();
-
-    function getFontShorthand(element) {
-        const style = getComputedStyle(element);
-        return `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    }
-
-    function getLineHeight(element) {
-        const style = getComputedStyle(element);
-        const lineHeight = parseFloat(style.lineHeight);
-        const fontSize = parseFloat(style.fontSize);
-        return Number.isFinite(lineHeight) ? lineHeight : fontSize * 1.2;
-    }
-
-    function renderPretextBlock(block) {
-        const content = block.querySelector('.message-lines');
-        if (!content) return;
-
-        const rawText = block.dataset.text ?? '';
-        const width = Math.max(content.clientWidth, 1);
-        const font = getFontShorthand(content);
-        const lineHeight = getLineHeight(content);
-        const prepared = prepareWithSegments(rawText, font, { whiteSpace: 'pre-wrap' });
-        const { lines } = layoutWithLines(prepared, width, lineHeight);
-
-        content.innerHTML = '';
-
-        if (lines.length === 0) {
-            const emptyLine = document.createElement('div');
-            emptyLine.className = 'message-line';
-            emptyLine.textContent = '\u00a0';
-            content.appendChild(emptyLine);
-        } else {
-            for (const line of lines) {
-                const lineDiv = document.createElement('div');
-                lineDiv.className = 'message-line';
-                lineDiv.textContent = line.text || '\u00a0';
-                content.appendChild(lineDiv);
+        @keyframes blink {
+            50% {
+                opacity: 0;
             }
         }
 
-        if (block.dataset.streaming === 'true') {
-            const cursor = document.createElement('span');
-            cursor.className = 'cursor';
-            content.appendChild(cursor);
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 980px) {
+            body {
+                padding: 14px;
+            }
+
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: 0;
+                border-bottom: 1px solid var(--line);
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <div class="topbar">
+        <div class="title-wrap">
+            <h1>DoOver 人生背景流式控制台</h1>
+            <p>把节点执行、搜索结果和结构化分析拆成可读的实时面板。</p>
+        </div>
+        <div id="statusChip" class="status-chip">
+            <span class="status-dot"></span>
+            <span id="statusText">连接中</span>
+        </div>
+    </div>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="input-card">
+                <div class="panel-title">Input</div>
+                <div class="label">当前输入</div>
+                <div id="inputPreview" class="text">等待输入</div>
+            </div>
+
+            <div class="steps">
+                <div class="panel-title">Flow</div>
+                <div id="stepList" class="step-list"></div>
+            </div>
+
+            <div class="search-feed">
+                <div class="panel-title">Search Feed</div>
+                <div id="searchList"></div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="stream">
+                <div class="stream-grid">
+                    <section class="card">
+                        <div class="card-head">
+                            <strong>实时分析</strong>
+                            <span class="pill" id="activeNode">idle</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="analysisText" class="rich-text"></div>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-head">
+                            <strong>执行轨迹</strong>
+                            <span class="pill">stream log</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="timeline" class="timeline"></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div class="composer">
+                <input type="text" id="msgInput" placeholder="输入你的经历，例如：三年前我和她分手了……">
+                <button id="sendBtn">开始分析</button>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+    const WS_URL = 'ws://localhost:8765';
+
+    const statusChip = document.getElementById('statusChip');
+    const statusText = document.getElementById('statusText');
+    const inputPreview = document.getElementById('inputPreview');
+    const stepList = document.getElementById('stepList');
+    const searchList = document.getElementById('searchList');
+    const analysisText = document.getElementById('analysisText');
+    const timeline = document.getElementById('timeline');
+    const activeNode = document.getElementById('activeNode');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    let socket = null;
+    let analysisBuffer = '';
+    const seenNodes = new Map();
+    let lastNodeName = '';
+    let searchBuffer = '';
+    let searchLoading = false;
+
+    function setStatus(text, connected = false) {
+        statusText.textContent = text;
+        statusChip.classList.toggle('connected', connected);
+    }
+
+    function resetSession(inputText = '') {
+        analysisBuffer = '';
+        searchBuffer = '';
+        searchLoading = false;
+        seenNodes.clear();
+        lastNodeName = '';
+        inputPreview.textContent = inputText || '等待输入';
+        analysisText.textContent = '';
+        analysisText.classList.add('streaming');
+        timeline.innerHTML = '';
+        stepList.innerHTML = '';
+        searchList.innerHTML = '';
+        activeNode.textContent = 'idle';
+    }
+
+    function addTimeline(label, value) {
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+        item.innerHTML = `<div class="k">${label}</div><div class="v"></div>`;
+        item.querySelector('.v').textContent = value;
+        timeline.appendChild(item);
+        timeline.scrollTop = timeline.scrollHeight;
+    }
+
+    function upsertNode(name) {
+        if (!seenNodes.has(name)) {
+            const item = document.createElement('div');
+            item.className = 'step-item';
+            item.dataset.node = name;
+            item.innerHTML = `
+                <span class="step-bullet"></span>
+                <span class="step-name">${name}</span>
+            `;
+            seenNodes.set(name, item);
+            stepList.appendChild(item);
+        }
+
+        for (const node of seenNodes.values()) {
+            node.classList.remove('active');
+            node.classList.remove('loading');
+        }
+
+        const current = seenNodes.get(name);
+        current.classList.add('active');
+        current.classList.add('loading');
+        activeNode.textContent = name;
+        lastNodeName = name;
+    }
+
+    function finishNode(name = lastNodeName) {
+        if (!name) return;
+        const node = seenNodes.get(name);
+        if (node) {
+            node.classList.remove('loading');
         }
     }
 
-    function rerenderAllBlocks() {
-        renderedBlocks.forEach(renderPretextBlock);
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+    function renderSearchLoading() {
+        searchList.innerHTML = `
+            <div class="search-item loading">
+                <span class="spinner"></span>
+                <span>正在搜索...</span>
+            </div>
+        `;
     }
 
-    function createMessageBlock(label, className) {
-        const block = document.createElement('div');
-        block.className = `message ${className}`.trim();
-        block.innerHTML = `
-            <div class="message-label">${label}</div>
-            <div class="message-lines"></div>
-        `;
-        block.dataset.text = '';
-        block.dataset.streaming = 'false';
-        outputDiv.appendChild(block);
-        renderedBlocks.add(block);
-        return block;
+    function startSearchLoading() {
+        searchLoading = true;
+        renderSearchLoading();
+        finishNode();
+    }
+
+    function stopSearchLoading() {
+        searchLoading = false;
+    }
+
+    function appendAnalysis(text) {
+        analysisBuffer += text;
+        analysisText.textContent = analysisBuffer;
+    }
+
+    function renderSearchResult(raw) {
+        searchBuffer += raw;
+
+        let parsed = null;
+        try {
+            parsed = JSON.parse(searchBuffer);
+        } catch {
+            return;
+        }
+
+        stopSearchLoading();
+        searchList.innerHTML = '';
+        const list = Array.isArray(parsed) ? parsed : [];
+        for (const item of list) {
+            const row = document.createElement('div');
+            row.className = 'search-item';
+            row.innerHTML = `
+                <a href="${item.url || '#'}" target="_blank" rel="noreferrer">${item.title || '未命名结果'}</a>
+                <div class="meta">${item.website || '未知来源'} ${item.date ? '· ' + item.date : ''}</div>
+                <div class="snippet">${item.snippet || item.content || ''}</div>
+            `;
+            searchList.appendChild(row);
+        }
+        addTimeline('search', `收到 ${list.length} 条搜索结果`);
+    }
+
+    function handleLine(line) {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        if (trimmed.startsWith('请输入你的经历:')) {
+            const text = trimmed.replace('请输入你的经历:', '').trim();
+            inputPreview.textContent = text || '等待输入';
+            addTimeline('input', text || '开始输入');
+            return;
+        }
+
+        if (trimmed.startsWith('node:')) {
+            const nodeName = trimmed.slice(5).trim();
+            if (nodeName.toLowerCase().includes('search')) {
+                startSearchLoading();
+            } else {
+                stopSearchLoading();
+            }
+            upsertNode(nodeName);
+            addTimeline('node', nodeName);
+            return;
+        }
+
+        if (trimmed.startsWith('background_node_msg:')) {
+            const text = trimmed.slice('background_node_msg:'.length);
+            finishNode();
+            appendAnalysis(text);
+            return;
+        }
+
+        if (trimmed.startsWith('Baidu Search Result:')) {
+            const payload = trimmed.slice('Baidu Search Result:'.length).trim();
+            renderSearchResult(payload);
+            return;
+        }
+
+        finishNode();
+        addTimeline(lastNodeName || 'log', trimmed);
+    }
+
+    function handleChunk(chunk) {
+        const normalized = chunk.replace(/\r/g, '');
+        const lines = normalized.split('\n');
+        for (const line of lines) {
+            handleLine(line);
+        }
     }
 
     function connect() {
-        statusSpan.textContent = '正在连接...';
-        statusSpan.style.color = '#f39c12';
+        setStatus('连接中', false);
+        socket = new WebSocket(WS_URL);
 
-        try {
-            socket = new WebSocket(WS_URL);
+        socket.onopen = () => {
+            setStatus('已连接', true);
+            msgInput.disabled = false;
+            sendBtn.disabled = false;
+        };
 
-            socket.onopen = () => {
-                statusSpan.textContent = '已连接';
-                statusSpan.style.color = '#27ae60';
-                inputField.disabled = false;
-                sendBtn.disabled = false;
-                inputField.focus();
-                outputDiv.innerHTML = '';
-                renderedBlocks.clear();
-                currentResponseDiv = null;
-            };
+        socket.onmessage = (event) => {
+            handleChunk(String(event.data));
+        };
 
-            socket.onmessage = (event) => {
-                if (!currentResponseDiv) {
-                    currentResponseDiv = createMessageBlock('AI:', '');
-                    currentResponseDiv.dataset.streaming = 'true';
-                }
+        socket.onclose = () => {
+            setStatus('连接已断开', false);
+            msgInput.disabled = true;
+            sendBtn.disabled = true;
+            analysisText.classList.remove('streaming');
+        };
 
-                currentResponseDiv.dataset.text += event.data;
-                renderPretextBlock(currentResponseDiv);
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-            };
-
-            socket.onclose = () => {
-                statusSpan.textContent = '连接已断开';
-                statusSpan.style.color = '#e74c3c';
-                inputField.disabled = true;
-                sendBtn.disabled = true;
-            };
-
-            socket.onerror = (err) => {
-                console.error('连接错误:', err);
-                statusSpan.textContent = '连接错误';
-            };
-        } catch (error) {
-            console.error(error);
-        }
+        socket.onerror = () => {
+            setStatus('连接错误', false);
+        };
     }
 
     function sendMessage() {
-        const text = inputField.value.trim();
-        if (!text || !socket) return;
+        const text = msgInput.value.trim();
+        if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
 
-        if (currentResponseDiv) {
-            currentResponseDiv.dataset.streaming = 'false';
-            renderPretextBlock(currentResponseDiv);
-            currentResponseDiv = null;
-        }
-
-        const userDiv = createMessageBlock('我:', 'user');
-        userDiv.dataset.text = text;
-        renderPretextBlock(userDiv);
-
+        resetSession(text);
+        addTimeline('session', '开始新一轮分析');
         socket.send(text);
-        inputField.value = '';
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        msgInput.value = '';
     }
 
     sendBtn.addEventListener('click', sendMessage);
-    inputField.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') sendMessage();
+    msgInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
     });
-    window.addEventListener('resize', rerenderAllBlocks);
 
     connect();
 </script>

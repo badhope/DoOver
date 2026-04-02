@@ -1,7 +1,7 @@
 from langchain_core.language_models import BaseChatModel
 from llm.client import load_active_llm
 from utils.logger import logger
-
+from tools.registry import active_tools
 def get_model() -> BaseChatModel:
     try:
         model = load_active_llm()

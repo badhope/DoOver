@@ -28,6 +28,7 @@ from utils.load_config import load_json_config
 
 _ws_clients = set()
 _ws_server = None
+_ws_message_queue = asyncio.Queue()
 _CONFIG_PATH = Path(__file__).resolve().parent / "config" / "utils.json"
 _logger_config = load_json_config(_CONFIG_PATH).get("logger", {})
 _is_to_file = bool(_logger_config.get("is_to_file", False))
@@ -113,6 +114,7 @@ async def websocket_handler(websocket):
     _ws_clients.add(websocket)
     try:
         async for message in websocket:
+            await _ws_message_queue.put(message)
             await websocket.send(message)
     finally:
         _ws_clients.discard(websocket)
@@ -141,6 +143,10 @@ async def stop_websocket_server():
     _ws_clients.clear()
 
 
+async def receive_websocket_message():
+    return await _ws_message_queue.get()
+
+
 logger: LoggerProtocol = cast(LoggerProtocol, _LoggerProxy(_base_logger))
 
-__all__ = ["logger", "start_websocket_server", "stop_websocket_server"]
+__all__ = ["logger", "start_websocket_server", "stop_websocket_server", "receive_websocket_message"]
