@@ -35,7 +35,7 @@ graph.add_conditional_edges(
     should_continue,
     {
         "continue": "tool_node",
-        "end": "background_node",
+        "end": END,
     },
 )
 graph.add_conditional_edges(
@@ -43,18 +43,11 @@ graph.add_conditional_edges(
     should_wait_for_user,
     {
         "wait": "wait_user_node",
-        "continue": "agent_node",
+        "continue": "background_node",
     },
 )
 graph.add_edge("wait_user_node", "background_node")
-graph.add_conditional_edges(
-    "background_node",
-    lambda state: "end" if state.get("done") else "continue",
-    {
-        "continue": "agent_node",
-        "end": END,
-    },
-)
+
 app = graph.compile()
 
 from IPython.display import Image,display

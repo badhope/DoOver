@@ -13,6 +13,7 @@ from utils.logger import emit_ws_event, logger, receive_websocket_event
 
 
 async def init_world_params(state: AgentState) -> AgentState:
+    logger.info("init_world_params")
     time = get_current_time()
     country = await get_country_by_ip()
     logger.print("node:" + "init_world_params")
@@ -25,6 +26,7 @@ async def init_world_params(state: AgentState) -> AgentState:
 
 
 async def intake_node(state: AgentState) -> AgentState:
+    logger.info("intake_node")
     raw_input = state.get("raw_input")
     if not raw_input:
         raise ValueError("raw_input is required")
@@ -36,6 +38,7 @@ async def intake_node(state: AgentState) -> AgentState:
 
 
 async def background_node(state: AgentState) -> dict[str, Any]:
+    logger.info("background_node")
     raw_input = state.get("raw_input", "")
     world_info = state.get("world_info", {})
     prompt_messages = prompt_template.format_messages(
@@ -49,6 +52,7 @@ async def background_node(state: AgentState) -> dict[str, Any]:
     final_text = ""
     response: Any = None
     logger.print("node:" + "background_node")
+
     async for chunk in model.astream(content):
         chunk = cast(Any, chunk)
         text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
@@ -66,6 +70,7 @@ async def background_node(state: AgentState) -> dict[str, Any]:
     }
 
 async def wait_user_node(state: AgentState) -> AgentState:
+    logger.info("wait_user_node")
     logger.print("node:" + "wait_user_node")
     field = "follow_up"
     recent_tool_messages: list[ToolMessage] = []
@@ -98,6 +103,7 @@ async def wait_user_node(state: AgentState) -> AgentState:
 
 
 async def should_continue_bg(state: AgentState):
+    logger.info("should_continue_bg")
     background_refined = state.get("background_refined")
     if not background_refined:
         return "continue"
@@ -105,6 +111,7 @@ async def should_continue_bg(state: AgentState):
 
 
 async def agent_node(state: AgentState):
+    logger.info("agent_node")
     model = get_model().bind_tools(active_tools)
     messages = state.get("messages") or []
     prompt = messages + [refine_prompt]
@@ -114,20 +121,25 @@ async def agent_node(state: AgentState):
 
 
 def should_continue(state: AgentState):
+    logger.info("should_continue")
     messages = state.get("messages", [])
     if not messages:
+        logger.info("should_continue -> end (no messages)")
         return "end"
 
     last_message = messages[-1]
     if not isinstance(last_message, AIMessage):
+        logger.info(f"should_continue -> end (last={type(last_message).__name__})")
         return "end"
 
-    if not last_message.tool_calls:
-        return "end"
-    return "continue"
+    route = "continue" if last_message.tool_calls else "end"
+    logger.info(f"should_continue -> {route}; tool_calls={last_message.tool_calls}")
+    return route
+
 
 
 def should_wait_for_user(state: AgentState):
+    logger.info("should_wait_for_user")
     recent_tool_messages: list[ToolMessage] = []
 
     for message in reversed(state.get("messages", [])):
