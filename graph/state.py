@@ -1,19 +1,17 @@
-from typing import TypedDict, Any
+from typing import Annotated, Any, TypedDict
+
 from langchain_core.messages import BaseMessage
-from typing import Annotated
 from langgraph.graph.message import add_messages
 
 
-
-# 定义 State (共享背包)
-class AgentState(TypedDict,total=False):
-    world_info:dict[str, Any]
-    raw_input:str #用户原始输入
-    structured_scenario:dict[str, Any] # 提取出的信息
-    turning_event:str #关键转折点是什么
-    chosen_action:str #用户做出的不同选择
-    predicted_outcome:str | dict[str, Any] #模型预测的事件走向
-    truth_check:str | dict[str, Any] #事件合理性检查
-    final_answer:str #最终结果
+class AgentState(TypedDict, total=False):
+    world_info: dict[str, Any]
+    raw_input: str
+    structured_scenario: dict[str, Any] | str
+    turning_event: str
+    chosen_action: str
+    predicted_outcome: str | dict[str, Any]
+    truth_check: str | dict[str, Any]
+    final_answer: str
     messages: Annotated[list[BaseMessage], add_messages]
-    background_refined:bool
+    background_refined: bool

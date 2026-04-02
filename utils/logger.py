@@ -1,29 +1,16 @@
 """
 This module keeps console logging and can optionally mirror logs to a file based
 on ``utils/config/utils.json``.
-
-- Standard log methods such as ``logger.info(...)`` always write to the console,
-  and also write to ``logs/doover.log`` when ``logger.is_to_file`` is enabled.
-- ``logger.print(...)`` follows the same console/file behavior and also broadcasts
-  to WebSocket clients.
-- ``logger.printws(...)`` broadcasts to WebSocket clients only.
-
-Usage:
-    from utils.logger import logger, start_websocket_server, stop_websocket_server
-
-    await start_websocket_server("localhost", 8765)
-    logger.info("hello world")
-    logger.print("hello world")
-    logger.printws("websocket only")
-    await stop_websocket_server()
 """
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Any, Protocol, cast
 
 from loguru import logger as _base_logger
+
 from utils.load_config import load_json_config
 
 _ws_clients = set()
@@ -83,7 +70,7 @@ class _LoggerProxy:
         _schedule_ws_broadcast(message)
 
 
-async def _broadcast_ws_message(message):
+async def _broadcast_ws_message(message: str):
     if not _ws_clients:
         return
 
@@ -98,7 +85,7 @@ async def _broadcast_ws_message(message):
         _ws_clients.discard(client)
 
 
-def _schedule_ws_broadcast(message):
+def _schedule_ws_broadcast(message: str):
     if not _ws_clients:
         return
 
@@ -114,8 +101,11 @@ async def websocket_handler(websocket):
     _ws_clients.add(websocket)
     try:
         async for message in websocket:
-            await _ws_message_queue.put(message)
-            await websocket.send(message)
+            try:
+                parsed_message = json.loads(message)
+            except (TypeError, json.JSONDecodeError):
+                parsed_message = {"type": "text", "text": str(message)}
+            await _ws_message_queue.put(parsed_message)
     finally:
         _ws_clients.discard(websocket)
 
@@ -147,6 +137,24 @@ async def receive_websocket_message():
     return await _ws_message_queue.get()
 
 
+async def receive_websocket_event(event_type: str):
+    while True:
+        event = await _ws_message_queue.get()
+        if isinstance(event, dict) and event.get("type") == event_type:
+            return event
+
+
+def emit_ws_event(event_type: str, **payload: Any) -> None:
+    _schedule_ws_broadcast(json.dumps({"type": event_type, **payload}, ensure_ascii=False))
+
+
 logger: LoggerProtocol = cast(LoggerProtocol, _LoggerProxy(_base_logger))
 
-__all__ = ["logger", "start_websocket_server", "stop_websocket_server", "receive_websocket_message"]
+__all__ = [
+    "logger",
+    "start_websocket_server",
+    "stop_websocket_server",
+    "receive_websocket_message",
+    "receive_websocket_event",
+    "emit_ws_event",
+]

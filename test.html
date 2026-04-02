@@ -166,14 +166,6 @@
             border-color: rgba(38, 70, 83, 0.18);
         }
 
-        .step-item.loading .step-bullet {
-            background: transparent;
-            border: 2px solid rgba(38, 70, 83, 0.24);
-            border-top-color: var(--node);
-            animation: spin 0.75s linear infinite;
-            box-shadow: none;
-        }
-
         .step-bullet {
             width: 11px;
             height: 11px;
@@ -185,6 +177,14 @@
         .step-item.active .step-bullet {
             background: var(--node);
             box-shadow: 0 0 0 6px rgba(38, 70, 83, 0.12);
+        }
+
+        .step-item.loading .step-bullet {
+            background: transparent;
+            border: 2px solid rgba(38, 70, 83, 0.24);
+            border-top-color: var(--node);
+            animation: spin 0.75s linear infinite;
+            box-shadow: none;
         }
 
         .step-name {
@@ -335,12 +335,47 @@
             line-height: 1.75;
         }
 
-        .composer {
+        .composer-stack {
             display: flex;
+            flex-direction: column;
             gap: 12px;
             padding: 20px 24px 24px;
             border-top: 1px solid var(--line);
             background: rgba(255,255,255,0.56);
+        }
+
+        .ask-card {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(38, 70, 83, 0.14);
+            background: rgba(38, 70, 83, 0.06);
+        }
+
+        .ask-card.active {
+            display: flex;
+        }
+
+        .ask-copy {
+            flex: 1;
+            min-width: 0;
+            line-height: 1.7;
+            font-size: 14px;
+        }
+
+        .ask-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
+        }
+
+        .composer {
+            display: flex;
+            gap: 12px;
         }
 
         .composer input {
@@ -455,9 +490,19 @@
                 </div>
             </div>
 
-            <div class="composer">
-                <input type="text" id="msgInput" placeholder="输入你的经历，例如：三年前我和她分手了……">
-                <button id="sendBtn">开始分析</button>
+            <div class="composer-stack">
+                <div id="askCard" class="ask-card">
+                    <span class="spinner"></span>
+                    <div class="ask-copy">
+                        <div class="ask-label">Question</div>
+                        <div id="askText">等待追问</div>
+                    </div>
+                </div>
+
+                <div class="composer">
+                    <input type="text" id="msgInput" placeholder="输入你的经历，例如：三年之前我和她分手了……">
+                    <button id="sendBtn">开始分析</button>
+                </div>
             </div>
         </main>
     </div>
@@ -476,13 +521,15 @@
     const activeNode = document.getElementById('activeNode');
     const msgInput = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
+    const askCard = document.getElementById('askCard');
+    const askText = document.getElementById('askText');
 
     let socket = null;
     let analysisBuffer = '';
     const seenNodes = new Map();
     let lastNodeName = '';
     let searchBuffer = '';
-    let searchLoading = false;
+    let pendingQuestion = null;
 
     function setStatus(text, connected = false) {
         statusText.textContent = text;
@@ -492,7 +539,7 @@
     function resetSession(inputText = '') {
         analysisBuffer = '';
         searchBuffer = '';
-        searchLoading = false;
+        pendingQuestion = null;
         seenNodes.clear();
         lastNodeName = '';
         inputPreview.textContent = inputText || '等待输入';
@@ -502,6 +549,7 @@
         stepList.innerHTML = '';
         searchList.innerHTML = '';
         activeNode.textContent = 'idle';
+        hideAskCard();
     }
 
     function addTimeline(label, value) {
@@ -541,9 +589,7 @@
     function finishNode(name = lastNodeName) {
         if (!name) return;
         const node = seenNodes.get(name);
-        if (node) {
-            node.classList.remove('loading');
-        }
+        if (node) node.classList.remove('loading');
     }
 
     function renderSearchLoading() {
@@ -553,16 +599,6 @@
                 <span>正在搜索...</span>
             </div>
         `;
-    }
-
-    function startSearchLoading() {
-        searchLoading = true;
-        renderSearchLoading();
-        finishNode();
-    }
-
-    function stopSearchLoading() {
-        searchLoading = false;
     }
 
     function appendAnalysis(text) {
@@ -580,7 +616,6 @@
             return;
         }
 
-        stopSearchLoading();
         searchList.innerHTML = '';
         const list = Array.isArray(parsed) ? parsed : [];
         for (const item of list) {
@@ -596,23 +631,44 @@
         addTimeline('search', `收到 ${list.length} 条搜索结果`);
     }
 
+    function showAskCard(question) {
+        pendingQuestion = question;
+        askText.textContent = question.question || '请补充更多信息';
+        askCard.classList.add('active');
+        msgInput.placeholder = '请输入补充信息后回车发送';
+    }
+
+    function hideAskCard() {
+        askCard.classList.remove('active');
+        askText.textContent = '等待追问';
+        msgInput.placeholder = '输入你的经历，例如：三年之前我和她分手了……';
+    }
+
+    function handleStructuredEvent(event) {
+        if (event.type === 'ask_user') {
+            finishNode();
+            showAskCard(event);
+            addTimeline('ask', event.question || '请补充信息');
+            return true;
+        }
+
+        if (event.type === 'user_answer_received') {
+            hideAskCard();
+            addTimeline('answer', event.answer || '');
+            return true;
+        }
+
+        return false;
+    }
+
     function handleLine(line) {
         const trimmed = line.trim();
         if (!trimmed) return;
 
-        if (trimmed.startsWith('请输入你的经历:')) {
-            const text = trimmed.replace('请输入你的经历:', '').trim();
-            inputPreview.textContent = text || '等待输入';
-            addTimeline('input', text || '开始输入');
-            return;
-        }
-
         if (trimmed.startsWith('node:')) {
             const nodeName = trimmed.slice(5).trim();
             if (nodeName.toLowerCase().includes('search')) {
-                startSearchLoading();
-            } else {
-                stopSearchLoading();
+                renderSearchLoading();
             }
             upsertNode(nodeName);
             addTimeline('node', nodeName);
@@ -620,15 +676,14 @@
         }
 
         if (trimmed.startsWith('background_node_msg:')) {
-            const text = trimmed.slice('background_node_msg:'.length);
             finishNode();
-            appendAnalysis(text);
+            appendAnalysis(trimmed.slice('background_node_msg:'.length));
             return;
         }
 
         if (trimmed.startsWith('Baidu Search Result:')) {
-            const payload = trimmed.slice('Baidu Search Result:'.length).trim();
-            renderSearchResult(payload);
+            finishNode();
+            renderSearchResult(trimmed.slice('Baidu Search Result:'.length).trim());
             return;
         }
 
@@ -636,10 +691,16 @@
         addTimeline(lastNodeName || 'log', trimmed);
     }
 
-    function handleChunk(chunk) {
-        const normalized = chunk.replace(/\r/g, '');
-        const lines = normalized.split('\n');
-        for (const line of lines) {
+    function handleSocketMessage(raw) {
+        try {
+            const event = JSON.parse(raw);
+            if (event && typeof event === 'object' && handleStructuredEvent(event)) {
+                return;
+            }
+        } catch {}
+
+        const normalized = String(raw).replace(/\r/g, '');
+        for (const line of normalized.split('\n')) {
             handleLine(line);
         }
     }
@@ -655,7 +716,7 @@
         };
 
         socket.onmessage = (event) => {
-            handleChunk(String(event.data));
+            handleSocketMessage(String(event.data));
         };
 
         socket.onclose = () => {
@@ -670,13 +731,31 @@
         };
     }
 
+    function sendPayload(payload) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify(payload));
+    }
+
     function sendMessage() {
         const text = msgInput.value.trim();
-        if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+        if (!text) return;
+
+        if (pendingQuestion) {
+            addTimeline('answer', text);
+            sendPayload({
+                type: 'user_answer',
+                field: pendingQuestion.field || 'follow_up',
+                answer: text,
+            });
+            pendingQuestion = null;
+            hideAskCard();
+            msgInput.value = '';
+            return;
+        }
 
         resetSession(text);
         addTimeline('session', '开始新一轮分析');
-        socket.send(text);
+        sendPayload({ type: 'user_input', text });
         msgInput.value = '';
     }
 
