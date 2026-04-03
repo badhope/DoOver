@@ -15,7 +15,7 @@ from graph.nodes import (
 )
 from graph.state import AgentState
 from tools.registry import active_tools
-from utils.logger import receive_websocket_event, start_websocket_server
+from utils.websocket import receive_websocket_event, start_websocket_server
 
 graph = StateGraph(AgentState)
 

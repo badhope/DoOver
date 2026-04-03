@@ -10,15 +10,16 @@ from graph.pydantic_models import AlternativeActionList
 from llm.service import get_model,get_nostream_model
 from tools.registry import active_tools
 from utils.ip_utils import get_country_by_ip
-from utils.logger import emit_ws_event, logger, receive_websocket_event
+from utils.logger import logger
+from utils.websocket import emit_ws_event, receive_websocket_event
 
 
 # 初始化世界参数节点
 async def init_world_params(state: AgentState) -> AgentState:
     logger.info("init_world_params")
+    logger.print("node:" + "init_world_params")
     time = get_current_time()
     country = await get_country_by_ip()
-    logger.print("node:" + "init_world_params")
     return {
         "world_info": {
             "time": time,
@@ -30,10 +31,10 @@ async def init_world_params(state: AgentState) -> AgentState:
 # 初次获取用户输入输入节点
 async def intake_node(state: AgentState) -> AgentState:
     logger.info("intake_node")
+    logger.print("node:" + "intake_node")
     raw_input = state.get("raw_input")
     if not raw_input:
         raise ValueError("raw_input is required")
-    logger.print("node:" + "intake_node")
     return {
         "raw_input": raw_input.strip(),
         "messages": [HumanMessage(content=raw_input.strip())],
@@ -42,6 +43,7 @@ async def intake_node(state: AgentState) -> AgentState:
 # 分析获取背景信息节点
 async def background_node(state: AgentState) -> dict[str, Any]:
     logger.info("background_node")
+    logger.print("node:" + "background_node")
     raw_input = state.get("raw_input", "")
     world_info = state.get("world_info", {})
     prompt_messages = prompt_template.format_messages(
@@ -54,7 +56,6 @@ async def background_node(state: AgentState) -> dict[str, Any]:
 
     final_text = ""
     response: Any = None
-    logger.print("node:" + "background_node")
 
     async for chunk in model.astream(content):
         chunk = cast(Any, chunk)
@@ -108,16 +109,17 @@ async def wait_user_node(state: AgentState) -> AgentState:
 # 分析调用工具节点
 async def agent_node(state: AgentState):
     logger.info("agent_node")
+    logger.print("node:" + "agent_node")
     model = get_model().bind_tools(active_tools)
     messages = state.get("messages") or []
     prompt = messages + [refine_prompt]
     response = await model.ainvoke(prompt)
-    logger.print("node:" + "agent_node")
     return {"messages": response}
 
 # 判断是否继续
 def should_continue(state: AgentState):
     logger.info("should_continue")
+    logger.print("node:" + "should_continue")
     messages = state.get("messages", [])
     if not messages:
         logger.info("should_continue -> end (no messages)")
@@ -136,6 +138,7 @@ def should_continue(state: AgentState):
 # 判断是否等待用户
 def should_wait_for_user(state: AgentState):
     logger.info("should_wait_for_user")
+    logger.print("node:" + "should_wait_for_user")
     recent_tool_messages: list[ToolMessage] = []
 
     for message in reversed(state.get("messages", [])):
@@ -153,14 +156,24 @@ def should_wait_for_user(state: AgentState):
 #输出转机的节点
 async def turn_node(state: AgentState) -> AgentState:
     logger.info("turn_node")
+    logger.print("node:" + "turn_node")
     structured_scenario = state.get("structured_scenario")
     model = get_nostream_model().with_structured_output(AlternativeActionList)
     prompt = turn_prompt_template.format_messages(
         messages = structured_scenario,
         method="function_calling"
     )
-    response = model.invoke(prompt)
-    logger.error(response)
+    raw_response = await model.ainvoke(prompt)
+    response = AlternativeActionList.model_validate(raw_response)
+    return {
+        "turning_event": response.items
+    }
+
+#用户选择节点
+async def user_choice_node(state: AgentState) -> AgentState:
+    logger.info("user_choice_node")
+    logger.print("node:" + "user_choice_node")
+    event = await receive_websocket_event("user_choice")
     return state
 # 角色节点
 async def role_node(state: AgentState) -> AgentState:
