@@ -42,7 +42,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at [INSERT CONTACT METHOD]. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at [Radiant303@qq.com](mailto:Radiant303@qq.com). All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
@@ -124,7 +124,7 @@ For answers to common questions about this code of conduct, see the FAQ at https
 
 ## 执行
 
-可以通过 [在此处插入联系方式] 向负责执行的社区领导者报告虐待、骚扰或其他不可接受行为的事件。所有投诉都将得到及时和公平的审查和调查。
+可以通过 [Radiant303@qq.com](mailto:Radiant303@qq.com) 向负责执行的社区领导者报告虐待、骚扰或其他不可接受行为的事件。所有投诉都将得到及时和公平的审查和调查。
 
 所有社区领导者都有义务尊重任何事件报告者的隐私和安全。
 
