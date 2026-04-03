@@ -28,7 +28,18 @@ type PendingQuestion = {
   field: string
 }
 
-type ModalMode = 'input' | 'question' | null
+type AlternativeActionItem = {
+  key_moment: string
+  original_action: string
+  alternative_action: string
+}
+
+type PendingChoice = {
+  field: string
+  options: AlternativeActionItem[]
+}
+
+type ModalMode = 'input' | 'question' | 'choice' | null
 
 const WS_URL = 'ws://localhost:8765'
 const RECONNECT_DELAY_MS = 3000
@@ -46,6 +57,7 @@ const timelineItems = ref<TimelineItem[]>([])
 const activeNode = ref('idle')
 const msgInput = ref('')
 const pendingQuestion = ref<PendingQuestion | null>(null)
+const pendingChoice = ref<PendingChoice | null>(null)
 const analysisStreaming = ref(false)
 const streamRef = ref<HTMLElement | null>(null)
 const analysisRef = ref<HTMLElement | null>(null)
@@ -63,22 +75,28 @@ let isUnmounting = false
 
 const modalMode = computed<ModalMode>(() => {
   if (pendingQuestion.value) return 'question'
+  if (pendingChoice.value) return 'choice'
   return isInputModalOpen.value ? 'input' : null
 })
 
+const hasBlockingPrompt = computed(() => Boolean(pendingQuestion.value || pendingChoice.value))
+
 const modalLead = computed(() => {
   if (pendingQuestion.value) return 'Question'
+  if (pendingChoice.value) return 'Choice'
   return hasSessionStarted.value ? 'New Input' : 'DoOver Input'
 })
 
 const modalTitle = computed(() => {
-  if (pendingQuestion.value) return '需要补充信息'
+  if (pendingQuestion.value) return '补充信息'
+  if (pendingChoice.value) return '选择一个转折分支'
   return hasSessionStarted.value ? '发送新的经历' : '开始一轮分析'
 })
 
 const modalDescription = computed(() => {
-  if (pendingQuestion.value) return '这条问题会阻塞后续执行，补充后会继续当前分析流。'
-  if (hasSessionStarted.value) return '发送新的经历会开启下一轮分析，并清空当前的实时输出。'
+  if (pendingQuestion.value) return '后端正在等待这条补充信息，提交后会继续当前分析流程。'
+  if (pendingChoice.value) return '后端已经生成多个可选分支，请点击一张卡片继续后续模拟。'
+  if (hasSessionStarted.value) return '发送新的经历会开启下一轮分析，并清空当前实时输出。'
   return '先输入你的经历，页面会开始建立节点、搜索和分析流。'
 })
 
@@ -88,14 +106,20 @@ const modalButtonLabel = computed(() => {
 })
 
 const footerHint = computed(() => {
-  if (pendingQuestion.value) return '当前正在等待补充信息，问题弹窗会置顶显示。'
-  if (hasSessionStarted.value) return '需要发起新一轮分析时，点击右上角或右下角按钮打开输入弹窗。'
+  if (pendingQuestion.value) return '当前正在等待补充信息，问题弹窗会固定显示。'
+  if (pendingChoice.value) return '当前正在等待你选择一个分支卡片，点击后会立即继续后端流程。'
+  if (hasSessionStarted.value) return '需要发起新一轮分析时，点击右上角或底部按钮打开输入弹窗。'
   return '进入页面时会先弹出输入窗口。'
 })
 
 const modalPlaceholder = computed(() => {
-  if (pendingQuestion.value) return '补充这条信息…'
-  return '输入你的经历，例如：三年之前我和她分手了……'
+  if (pendingQuestion.value) return '补充这条信息...'
+  return '输入你的经历，例如：三年之前我和她分手了...'
+})
+
+const choiceHint = computed(() => {
+  if (!pendingChoice.value) return ''
+  return isConnected.value ? '点击一张卡片，前端会立即把你的选择通过 WebSocket 发回后端。' : '等待 WebSocket 重连后再选择。'
 })
 
 function setStatus(text: string, connected = false) {
@@ -107,6 +131,7 @@ function resetSession(inputText = '') {
   analysisBuffer.value = ''
   searchBuffer = ''
   pendingQuestion.value = null
+  pendingChoice.value = null
   steps.value = []
   searchItems.value = []
   searchLoading.value = false
@@ -194,14 +219,61 @@ function renderSearchResult(raw: string) {
   addTimeline('search', `收到 ${searchItems.value.length} 条搜索结果`)
 }
 
+function normalizeAlternativeActionItem(item: unknown): AlternativeActionItem | null {
+  if (typeof item !== 'object' || item === null) return null
+
+  const record = item as Record<string, unknown>
+  const normalized = {
+    key_moment: typeof record.key_moment === 'string' ? record.key_moment : '',
+    original_action: typeof record.original_action === 'string' ? record.original_action : '',
+    alternative_action: typeof record.alternative_action === 'string' ? record.alternative_action : '',
+  }
+
+  if (!normalized.key_moment && !normalized.original_action && !normalized.alternative_action) {
+    return null
+  }
+
+  return normalized
+}
+
+function resolveAlternativeActionList(event: Record<string, unknown>): AlternativeActionItem[] {
+  const directItems = Array.isArray(event.turning_event)
+    ? event.turning_event
+    : Array.isArray(event.items)
+      ? event.items
+      : []
+
+  if (directItems.length > 0) {
+    return directItems.map(normalizeAlternativeActionItem).filter((item): item is AlternativeActionItem => item !== null)
+  }
+
+  const wrappedList =
+    typeof event.alternative_action_list === 'object' && event.alternative_action_list !== null
+      ? (event.alternative_action_list as Record<string, unknown>)
+      : null
+
+  const wrappedItems = Array.isArray(wrappedList?.items) ? wrappedList.items : []
+  return wrappedItems
+    .map(normalizeAlternativeActionItem)
+    .filter((item): item is AlternativeActionItem => item !== null)
+}
+
+function formatAlternativeActionChoice(option: AlternativeActionItem) {
+  return [
+    `关键时刻：${option.key_moment || '未提供'}`,
+    `原做法：${option.original_action || '未提供'}`,
+    `替代做法：${option.alternative_action || '未提供'}`,
+  ].join('\n')
+}
+
 function openInputModal() {
-  if (pendingQuestion.value) return
+  if (hasBlockingPrompt.value) return
   msgInput.value = ''
   isInputModalOpen.value = true
 }
 
 function closeInputModal() {
-  if (pendingQuestion.value) return
+  if (hasBlockingPrompt.value) return
   isInputModalOpen.value = false
   msgInput.value = ''
 }
@@ -227,6 +299,7 @@ function handleStructuredEvent(rawEvent: unknown) {
   const event = rawEvent as Record<string, unknown>
   if (event.type === 'ask_user') {
     finishNode()
+    pendingChoice.value = null
     pendingQuestion.value = {
       question: typeof event.question === 'string' ? event.question : '请补充更多信息',
       field: typeof event.field === 'string' ? event.field : 'follow_up',
@@ -236,9 +309,24 @@ function handleStructuredEvent(rawEvent: unknown) {
     return true
   }
 
+  if (event.type === 'ask_user_choice' || event.type === 'turning_event') {
+    finishNode()
+    const options = resolveAlternativeActionList(event)
+    pendingQuestion.value = null
+    pendingChoice.value = {
+      field: typeof event.field === 'string' ? event.field : 'choose',
+      options,
+    }
+    isInputModalOpen.value = false
+    msgInput.value = ''
+    addTimeline('choice', `收到 ${options.length} 个可选分支`)
+    return true
+  }
+
   if (event.type === 'user_answer_received') {
     const answer = typeof event.answer === 'string' ? event.answer : ''
     pendingQuestion.value = null
+    pendingChoice.value = null
     msgInput.value = ''
     addTimeline('answer', answer)
     return true
@@ -339,7 +427,7 @@ function sendPayload(payload: Record<string, unknown>) {
 
 function sendMessage() {
   const text = msgInput.value.trim()
-  if (!text) return
+  if (!text || pendingChoice.value) return
 
   if (pendingQuestion.value) {
     addTimeline('answer', text)
@@ -362,6 +450,20 @@ function sendMessage() {
     text,
   })
   msgInput.value = ''
+}
+
+function sendChoice(option: AlternativeActionItem, index: number) {
+  if (!pendingChoice.value || !isConnected.value) return
+
+  const choiceText = formatAlternativeActionChoice(option)
+  addTimeline('choice_selected', option.alternative_action || `option_${index + 1}`)
+  sendPayload({
+    type: 'user_choice',
+    field: pendingChoice.value.field,
+    user_choice: choiceText,
+    choice_index: index,
+  })
+  pendingChoice.value = null
 }
 
 function handleModalKeydown(event: KeyboardEvent) {
@@ -396,7 +498,7 @@ watch(
 watch(
   [modalMode, isConnected],
   async ([mode, connected]) => {
-    if (!mode || !connected) return
+    if (!mode || !connected || mode === 'choice') return
     await nextTick()
     modalInputRef.value?.focus()
     modalInputRef.value?.setSelectionRange(msgInput.value.length, msgInput.value.length)
@@ -418,7 +520,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="shell">
+  <div>
+    <div class="shell">
     <header class="topbar">
       <div class="title-wrap">
         <p class="eyebrow">DoOver Console</p>
@@ -426,7 +529,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="topbar-actions">
-        <button class="ghost-button" type="button" :disabled="!!pendingQuestion || !isConnected" @click="openInputModal">
+        <button class="ghost-button" type="button" :disabled="hasBlockingPrompt || !isConnected" @click="openInputModal">
           {{ hasSessionStarted ? '发送新输入' : '输入经历' }}
         </button>
 
@@ -480,7 +583,7 @@ onBeforeUnmount(() => {
               <a :href="item.url" target="_blank" rel="noreferrer">{{ item.title }}</a>
               <div class="meta">
                 {{ item.website }}
-                <span v-if="item.date">· {{ item.date }}</span>
+                <span v-if="item.date"> · {{ item.date }}</span>
               </div>
               <PretextBlock
                 class="search-snippet"
@@ -547,15 +650,15 @@ onBeforeUnmount(() => {
             <span>{{ footerHint }}</span>
           </div>
 
-          <button class="ghost-button footer-button" type="button" :disabled="!!pendingQuestion || !isConnected" @click="openInputModal">
+          <button class="ghost-button footer-button" type="button" :disabled="hasBlockingPrompt || !isConnected" @click="openInputModal">
             {{ hasSessionStarted ? '发送新输入' : '开始输入' }}
           </button>
         </footer>
       </main>
     </div>
-  </div>
+    </div>
 
-  <transition name="modal-fade">
+    <transition name="modal-fade">
     <div v-if="modalMode" class="modal-backdrop">
       <section class="modal-panel" aria-modal="true" role="dialog">
         <div class="modal-head">
@@ -582,30 +685,87 @@ onBeforeUnmount(() => {
           />
         </div>
 
-        <label class="modal-label" for="messageBox">
-          {{ pendingQuestion ? '你的回答' : '你的经历' }}
-        </label>
+        <div v-if="pendingChoice" class="modal-choice-grid">
+          <button
+            v-for="(option, index) in pendingChoice.options"
+            :key="`${index}-${option.key_moment}-${option.alternative_action}`"
+            class="choice-card"
+            type="button"
+            :disabled="!isConnected"
+            @click="sendChoice(option, index)"
+          >
+            <div class="choice-card-index">Option {{ index + 1 }}</div>
 
-        <textarea
-          id="messageBox"
-          ref="modalInputRef"
-          v-model="msgInput"
-          class="modal-textarea"
-          :placeholder="modalPlaceholder"
-          :disabled="!isConnected"
-          @keydown="handleModalKeydown"
-        ></textarea>
+            <div class="choice-card-section">
+              <div class="choice-card-label">Key Moment</div>
+              <PretextBlock
+                class="choice-card-text"
+                :text="option.key_moment || '未提供'"
+                :font="smallFont"
+                :line-height="24"
+                white-space="pre-wrap"
+              />
+            </div>
 
-        <div class="modal-actions">
-          <span class="modal-hint">
-            {{ isConnected ? '按 Ctrl/Command + Enter 发送' : '等待 WebSocket 连接恢复后再发送' }}
-          </span>
+            <div class="choice-card-section">
+              <div class="choice-card-label">Original Action</div>
+              <PretextBlock
+                class="choice-card-text"
+                :text="option.original_action || '未提供'"
+                :font="smallFont"
+                :line-height="24"
+                white-space="pre-wrap"
+              />
+            </div>
 
-          <button class="primary-button" type="button" :disabled="!isConnected || !msgInput.trim()" @click="sendMessage">
-            {{ modalButtonLabel }}
+            <div class="choice-card-section">
+              <div class="choice-card-label">Alternative Action</div>
+              <PretextBlock
+                class="choice-card-text"
+                :text="option.alternative_action || '未提供'"
+                :font="smallFont"
+                :line-height="24"
+                white-space="pre-wrap"
+              />
+            </div>
+
+            <span class="choice-card-action">Select This Path</span>
           </button>
+
+          <div v-if="pendingChoice.options.length === 0" class="empty-copy">后端尚未返回可选分支</div>
+        </div>
+
+        <template v-if="!pendingChoice">
+          <label class="modal-label" for="messageBox">
+            {{ pendingQuestion ? '你的回答' : '你的经历' }}
+          </label>
+
+          <textarea
+            id="messageBox"
+            ref="modalInputRef"
+            v-model="msgInput"
+            class="modal-textarea"
+            :placeholder="modalPlaceholder"
+            :disabled="!isConnected"
+            @keydown="handleModalKeydown"
+          ></textarea>
+
+          <div class="modal-actions">
+            <span class="modal-hint">
+              {{ isConnected ? '按 Ctrl/Command + Enter 发送' : '等待 WebSocket 连接恢复后再发送' }}
+            </span>
+
+            <button class="primary-button" type="button" :disabled="!isConnected || !msgInput.trim()" @click="sendMessage">
+              {{ modalButtonLabel }}
+            </button>
+          </div>
+        </template>
+
+        <div v-else class="modal-choice-hint">
+          {{ choiceHint }}
         </div>
       </section>
     </div>
-  </transition>
+    </transition>
+  </div>
 </template>

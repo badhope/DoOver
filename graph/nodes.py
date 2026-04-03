@@ -188,6 +188,7 @@ async def user_choice_node(state: AgentState) -> AgentState:
     answer = str(event.get("user_choice") or "").strip()
     logger.info(f"用户选择: {answer_field}: {answer}")
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
+    state["chosen_action"] = answer
     return {
         "messages": [HumanMessage(content=f"用户选择信息（{answer_field}）：{answer}")],
     }# 角色节点
