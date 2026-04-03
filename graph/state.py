@@ -15,3 +15,4 @@ class AgentState(TypedDict, total=False):
     final_answer: str
     messages: Annotated[list[BaseMessage], add_messages]
     background_refined: bool
+    role_info:list[str]

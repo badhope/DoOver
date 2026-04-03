@@ -3,15 +3,17 @@ from time import time as get_current_time
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
-
-from graph.prompts import prompt_template,refine_prompt
+from langchain.agents.structured_output import ToolStrategy
+from graph.prompts import prompt_template,refine_prompt,turn_prompt_template
 from graph.state import AgentState
-from llm.service import get_model
+from graph.pydantic_models import AlternativeActionList
+from llm.service import get_model,get_nostream_model
 from tools.registry import active_tools
 from utils.ip_utils import get_country_by_ip
 from utils.logger import emit_ws_event, logger, receive_websocket_event
 
 
+# 初始化世界参数节点
 async def init_world_params(state: AgentState) -> AgentState:
     logger.info("init_world_params")
     time = get_current_time()
@@ -25,6 +27,7 @@ async def init_world_params(state: AgentState) -> AgentState:
     }
 
 
+# 初次获取用户输入输入节点
 async def intake_node(state: AgentState) -> AgentState:
     logger.info("intake_node")
     raw_input = state.get("raw_input")
@@ -36,7 +39,7 @@ async def intake_node(state: AgentState) -> AgentState:
         "messages": [HumanMessage(content=raw_input.strip())],
     }
 
-
+# 分析获取背景信息节点
 async def background_node(state: AgentState) -> dict[str, Any]:
     logger.info("background_node")
     raw_input = state.get("raw_input", "")
@@ -69,6 +72,7 @@ async def background_node(state: AgentState) -> dict[str, Any]:
         "messages": [cast(BaseMessage, response)],
     }
 
+# 等待用户补充信息节点
 async def wait_user_node(state: AgentState) -> AgentState:
     logger.info("wait_user_node")
     logger.print("node:" + "wait_user_node")
@@ -101,15 +105,7 @@ async def wait_user_node(state: AgentState) -> AgentState:
         "messages": [HumanMessage(content=f"用户补充信息（{answer_field}）：{answer}")],
     }
 
-
-async def should_continue_bg(state: AgentState):
-    logger.info("should_continue_bg")
-    background_refined = state.get("background_refined")
-    if not background_refined:
-        return "continue"
-    return "end"
-
-
+# 分析调用工具节点
 async def agent_node(state: AgentState):
     logger.info("agent_node")
     model = get_model().bind_tools(active_tools)
@@ -119,7 +115,7 @@ async def agent_node(state: AgentState):
     logger.print("node:" + "agent_node")
     return {"messages": response}
 
-
+# 判断是否继续
 def should_continue(state: AgentState):
     logger.info("should_continue")
     messages = state.get("messages", [])
@@ -137,7 +133,7 @@ def should_continue(state: AgentState):
     return route
 
 
-
+# 判断是否等待用户
 def should_wait_for_user(state: AgentState):
     logger.info("should_wait_for_user")
     recent_tool_messages: list[ToolMessage] = []
@@ -153,3 +149,21 @@ def should_wait_for_user(state: AgentState):
         if getattr(message, "name", None) == "ask_user":
             return "wait"
     return "continue"
+
+#输出转机的节点
+async def turn_node(state: AgentState) -> AgentState:
+    logger.info("turn_node")
+    structured_scenario = state.get("structured_scenario")
+    model = get_nostream_model().with_structured_output(AlternativeActionList)
+    prompt = turn_prompt_template.format_messages(
+        messages = structured_scenario,
+        method="function_calling"
+    )
+    response = model.invoke(prompt)
+    logger.error(response)
+    return state
+# 角色节点
+async def role_node(state: AgentState) -> AgentState:
+    logger.info("role_node")
+
+    return state

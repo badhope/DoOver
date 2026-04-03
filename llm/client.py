@@ -56,5 +56,34 @@ def load_active_llm(config: dict[str, Any] | None = None) -> BaseChatModel:
 
     raise ValueError(f"Unsupported llm provider type: {provider_type}")
 
+def load_active_nostream_llm(config: dict[str, Any] | None = None) -> BaseChatModel:
+    config = config or load_json_config(CONFIG_PATH)
+    provider_name, model_name, provider_config = _get_active_provider_config(config)
+
+    api_key = provider_config["api_key"]
+    if not api_key:
+        raise ValueError(f"api_key'{api_key}' is not set")
+
+    base_url = provider_config["base_url"]
+    provider_type = provider_config["type"]
+
+    if provider_type == "moonshot":
+        return create_moonshot_llm(
+            model=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            stream_usage=False,
+        )
+
+    if provider_type == "openai":
+        return create_openai_llm(
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            stream_usage=False,
+        )
+
+    raise ValueError(f"Unsupported llm provider type: {provider_type}")
+
 
 __all__ = ["load_active_llm"]
