@@ -16,7 +16,7 @@ class AlternativeActionList(BaseModel):
     )
 
 
-class CharacterAgentPrompt(BaseModel):
+class CharacterAgentNode(BaseModel):
     """从用户经历中抽象出的角色信息"""
     name: str = Field(description="角色名字或称呼，不知道就用关系称呼")
     social_role: str = Field(description="角色身份，如母亲、前任、同事、领导")
@@ -59,6 +59,11 @@ class CharacterAgentPrompt(BaseModel):
         description="扮演限制与规则"
     )
 
-class RoleplayPrompt(BaseModel):
+class RoleplayList(BaseModel):
     """从用户经历中抽象出的角色扮演信息"""
-    roles: List[CharacterAgentPrompt] = Field(default_factory=list,description="从用户经历中抽象出的角色扮演信息")
+    roles: List[CharacterAgentNode] = Field(default_factory=list,description="从用户经历中抽象出的角色扮演信息")
+
+class RoleplayNode(BaseModel):
+    """角色扮演节点输出结果"""
+    action: str = Field(description="角色将会做的事情")
+    dialogue: str = Field(description="角色将会说的话")

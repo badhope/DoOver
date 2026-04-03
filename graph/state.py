@@ -3,7 +3,7 @@ from typing import Annotated, Any, TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-from graph.pydantic_models import AlternativeActionNode
+from graph.pydantic_models import AlternativeActionNode,CharacterAgentNode
 
 
 class AgentState(TypedDict, total=False):
@@ -16,4 +16,5 @@ class AgentState(TypedDict, total=False):
     truth_check: str | dict[str, Any]#真实性检查
     final_answer: str#最终的答案
     messages: Annotated[list[BaseMessage], add_messages]#聊天消息
-    role_info:list[str]#生成的角色信息
+    roles_info:list[CharacterAgentNode]#生成的角色信息
+    role: CharacterAgentNode #角色信息

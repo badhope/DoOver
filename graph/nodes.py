@@ -2,11 +2,12 @@ import json
 from time import time as get_current_time
 from typing import Any, cast
 
+from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import prompt_template,refine_prompt,turn_prompt_template
+from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt
 from graph.state import AgentState
-from graph.pydantic_models import AlternativeActionList
+from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
 from tools.registry import active_tools
 from tools.interaction import ask_user_choice_impl
@@ -192,7 +193,26 @@ async def user_choice_node(state: AgentState) -> AgentState:
     return {
         "messages": [HumanMessage(content=f"用户选择信息（{answer_field}）：{answer}")],
     }# 角色节点
-async def role_node(state: AgentState) -> AgentState:
-    logger.info("role_node")
+async def create_role_node(state: AgentState) -> list[Send]:
+    logger.info("create_role_node")
+    logger.print("node:"+"create_role_node")
+    sysmsg = create_agent_prompt
+    structured_scenario = state.get("structured_scenario")
+    if isinstance(structured_scenario, dict):
+        content = json.dumps(structured_scenario, ensure_ascii=False)
+    elif isinstance(structured_scenario, str):
+        content = structured_scenario
+    else:
+        content = ""
+    hummsg_info = HumanMessage(content=content)
+    hummsg_choose = HumanMessage(content=state.get("chosen_action"))
+    prompt = [sysmsg, hummsg_info, hummsg_choose]
+    model = get_nostream_model().with_structured_output(RoleplayList)
+    raw_roles_info = await model.ainvoke(prompt)
+    roles_info = RoleplayList.model_validate(raw_roles_info)
+    logger.info(roles_info)
+    state["roles_info"] = roles_info.roles
+    return [Send("role_node", {"role":role}) for role in state['roles_info']]
 
+async def role_node(state: AgentState) -> AgentState:
     return state

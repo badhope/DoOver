@@ -12,7 +12,9 @@ from graph.nodes import (
     wait_user_node,
     agent_node,
     turn_node,
-    user_choice_node
+    user_choice_node,
+    create_role_node,
+    role_node
 )
 from graph.state import AgentState
 from tools.registry import active_tools
@@ -28,6 +30,7 @@ graph.add_node("wait_user_node", wait_user_node)
 graph.add_node("agent_node", agent_node)
 graph.add_node("turn_node",turn_node)
 graph.add_node("user_choice_node", user_choice_node)
+graph.add_node("role_node", role_node)
 
 graph.set_entry_point("init_world_params")
 
@@ -52,13 +55,14 @@ graph.add_conditional_edges(
 )
 graph.add_edge("wait_user_node", "background_node")
 graph.add_edge("turn_node", "user_choice_node")
+graph.add_conditional_edges("user_choice_node", create_role_node, ["role_node"])
 
 app = graph.compile()
 
 from IPython.display import Image,display
 
 display(Image(app.get_graph().draw_mermaid_png()))
-async def run_doc():
+""" async def run_doc():
 
 
     await start_websocket_server("localhost", 8765)
@@ -75,3 +79,4 @@ async def run_doc():
 if __name__ == "__main__":
     
     asyncio.run(run_doc())
+ """
