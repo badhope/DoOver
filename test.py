@@ -62,7 +62,7 @@ app = graph.compile()
 from IPython.display import Image,display
 
 display(Image(app.get_graph().draw_mermaid_png()))
-""" async def run_doc():
+async def run_doc():
 
 
     await start_websocket_server("localhost", 8765)
@@ -79,4 +79,3 @@ display(Image(app.get_graph().draw_mermaid_png()))
 if __name__ == "__main__":
     
     asyncio.run(run_doc())
- """
