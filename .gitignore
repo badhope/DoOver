@@ -1,0 +1,4 @@
+*.pyc
+llm/config/provider.json
+*drawio*
+tools/config/tools.json
