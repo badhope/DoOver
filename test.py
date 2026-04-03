@@ -11,7 +11,8 @@ from graph.nodes import (
     should_wait_for_user,
     wait_user_node,
     agent_node,
-    turn_node
+    turn_node,
+    user_choice_node
 )
 from graph.state import AgentState
 from tools.registry import active_tools
@@ -26,6 +27,7 @@ graph.add_node("tool_node", ToolNode(tools=active_tools))
 graph.add_node("wait_user_node", wait_user_node)
 graph.add_node("agent_node", agent_node)
 graph.add_node("turn_node",turn_node)
+graph.add_node("user_choice_node", user_choice_node)
 
 graph.set_entry_point("init_world_params")
 
@@ -49,6 +51,7 @@ graph.add_conditional_edges(
     },
 )
 graph.add_edge("wait_user_node", "background_node")
+graph.add_edge("turn_node", "user_choice_node")
 
 app = graph.compile()
 

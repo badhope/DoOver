@@ -9,6 +9,7 @@ from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList
 from llm.service import get_model,get_nostream_model
 from tools.registry import active_tools
+from tools.interaction import ask_user_choice_impl
 from utils.ip_utils import get_country_by_ip
 from utils.logger import logger
 from utils.websocket import emit_ws_event, receive_websocket_event
@@ -173,9 +174,23 @@ async def turn_node(state: AgentState) -> AgentState:
 async def user_choice_node(state: AgentState) -> AgentState:
     logger.info("user_choice_node")
     logger.print("node:" + "user_choice_node")
+    turning_event = state.get("turning_event")
+    field = "choose"
+    if turning_event is None:
+        raise ValueError("turning_event 缺失")
+    if not isinstance(turning_event, list):
+        raise TypeError(f"turning_event 类型错误: {type(turning_event)}")
+    await ask_user_choice_impl(
+        AlternativeActionList(items=turning_event)
+    )
     event = await receive_websocket_event("user_choice")
-    return state
-# 角色节点
+    answer_field = str(event.get("field") or field)
+    answer = str(event.get("user_choice") or "").strip()
+    logger.info(f"用户选择: {answer_field}: {answer}")
+    emit_ws_event("user_answer_received", field=answer_field, answer=answer)
+    return {
+        "messages": [HumanMessage(content=f"用户选择信息（{answer_field}）：{answer}")],
+    }# 角色节点
 async def role_node(state: AgentState) -> AgentState:
     logger.info("role_node")
 
