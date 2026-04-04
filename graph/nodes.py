@@ -212,8 +212,9 @@ async def create_role_node(state: AgentState) -> AgentState:
     hummsg_info = HumanMessage(content=content)
     hummsg_choose = HumanMessage(content=chosen_action)
     prompt = [sysmsg, hummsg_info, hummsg_choose]
-    model = get_nostream_model().with_structured_output(RoleplayList,method="function_calling")
+    model = get_nostream_model().with_structured_output(RoleplayList)
     raw_roles_info = await model.ainvoke(prompt)
+    logger.info(raw_roles_info)
     roles_info = RoleplayList.model_validate(raw_roles_info)
     logger.info(roles_info)
     state["roles_info"] = roles_info.roles
