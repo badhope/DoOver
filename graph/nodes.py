@@ -5,7 +5,7 @@ from typing import Any, cast
 from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt
+from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template
 from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
@@ -189,13 +189,17 @@ async def user_choice_node(state: AgentState) -> AgentState:
     answer = str(event.get("user_choice") or "").strip()
     logger.info(f"用户选择: {answer_field}: {answer}")
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
-    state["chosen_action"] = answer
     return {
+        "chosen_action": answer,
         "messages": [HumanMessage(content=f"用户选择信息（{answer_field}）：{answer}")],
-    }# 角色节点
-async def create_role_node(state: AgentState) -> list[Send]:
+    }
+# 创建角色节点
+async def create_role_node(state: AgentState) -> AgentState:
     logger.info("create_role_node")
     logger.print("node:"+"create_role_node")
+    chosen_action = state.get("chosen_action")
+    if not chosen_action:
+        raise ValueError("chosen_action 缺失")
     sysmsg = create_agent_prompt
     structured_scenario = state.get("structured_scenario")
     if isinstance(structured_scenario, dict):
@@ -205,14 +209,56 @@ async def create_role_node(state: AgentState) -> list[Send]:
     else:
         content = ""
     hummsg_info = HumanMessage(content=content)
-    hummsg_choose = HumanMessage(content=state.get("chosen_action"))
+    hummsg_choose = HumanMessage(content=chosen_action)
     prompt = [sysmsg, hummsg_info, hummsg_choose]
     model = get_nostream_model().with_structured_output(RoleplayList)
     raw_roles_info = await model.ainvoke(prompt)
     roles_info = RoleplayList.model_validate(raw_roles_info)
     logger.info(roles_info)
     state["roles_info"] = roles_info.roles
-    return [Send("role_node", {"role":role}) for role in state['roles_info']]
+    return {
+        "roles_info": roles_info.roles
+    }
+def continue_to_roles(state: AgentState) -> list[Send]:
+    return [Send("role_node", {"role": role}) for role in state.get("roles_info",[])]
 
+# 角色节点
 async def role_node(state: AgentState) -> AgentState:
+    logger.info("role_node")
+    logger.print("node:" + "role_node")
+    role_info = state.get("role")
+    if role_info is None:
+        logger.error("role_info is None in role_node")
+        return state
+    role_prompt = role_prompt_template.format_messages(
+        name=role_info.name,
+        social_role=role_info.social_role,
+        relation_to_user=role_info.relation_to_user,
+        summary=role_info.summary,
+        observed_actions=role_info.observed_actions,
+        observed_attitudes=role_info.observed_attitudes,
+        shared_events=role_info.shared_events,
+        speech_style=role_info.communication_style,
+        personality_traits=role_info.inferred_traits,
+        knowledge_scope=role_info.knowledge_scope,
+        boundaries=role_info.roleplay_rules,
+        scene = state.get("structured_scenario"),
+        user_message = state.get("chosen_action")
+    )
+    model = get_model()
+
+    final_text = ""
+    response: Any = None
+
+    async for chunk in model.astream(role_prompt):
+        chunk = cast(Any, chunk)
+        text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
+        if text:
+            logger.print(f"role_node:{role_info.name}" + text, end="")
+            final_text += text
+        if response is None:
+            response = chunk
+        else:
+            response = response + chunk
+    logger.info(f"role_node:{role_info.name} -> {final_text}")
     return state

@@ -4,7 +4,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
 from graph.pydantic_models import AlternativeActionNode,CharacterAgentNode
-
+import operator
 
 class AgentState(TypedDict, total=False):
     world_info: dict[str, Any]#世界信息
@@ -17,4 +17,4 @@ class AgentState(TypedDict, total=False):
     final_answer: str#最终的答案
     messages: Annotated[list[BaseMessage], add_messages]#聊天消息
     roles_info:list[CharacterAgentNode]#生成的角色信息
-    role: CharacterAgentNode #角色信息
+    role_outputs: Annotated[list[str], operator.add]

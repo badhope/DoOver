@@ -14,6 +14,7 @@ from graph.nodes import (
     turn_node,
     user_choice_node,
     create_role_node,
+    continue_to_roles,
     role_node
 )
 from graph.state import AgentState
@@ -31,7 +32,7 @@ graph.add_node("agent_node", agent_node)
 graph.add_node("turn_node",turn_node)
 graph.add_node("user_choice_node", user_choice_node)
 graph.add_node("role_node", role_node)
-
+graph.add_node("create_role_node", create_role_node)
 graph.set_entry_point("init_world_params")
 
 graph.add_edge("init_world_params", "intake_node")
@@ -55,7 +56,8 @@ graph.add_conditional_edges(
 )
 graph.add_edge("wait_user_node", "background_node")
 graph.add_edge("turn_node", "user_choice_node")
-graph.add_conditional_edges("user_choice_node", create_role_node, ["role_node"])
+graph.add_edge("user_choice_node", "create_role_node")
+graph.add_conditional_edges("create_role_node", continue_to_roles, ["role_node"])
 
 app = graph.compile()
 
