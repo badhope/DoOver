@@ -178,26 +178,47 @@ refine_prompt = SystemMessage(content="""
 
 #抽象出转折事件节点提示词
 turn_prompt_template = ChatPromptTemplate.from_messages([
-    ("system",
-"""你是“关键决策点与替代做法分析器”。
-你的任务是根据 {messages} 中的经历内容，识别出那些“当时其实存在其他做法、并且其他做法可能带来不同结果”的关键节点，并输出可行的替代做法。
-【目标】
-不要只复述已经发生的事情，而是找出：
-1. 哪些行为、回应、决定、本该沟通的时刻，存在可替代选择；
-2. 如果不按原方式处理，还可以怎么做；
-3. 这些替代做法为什么可能带来改变。
-【规则】
-1. 最多输出 3 个关键节点。
-2. 只分析那些“用户或相关人物当时确实有选择空间”的情境。
-3. 不要分析完全不可控、不可改变的客观事实。
-4. 替代做法必须基于原始情境合理可行，不能脱离上下文空想。
-5. 不要输出空泛建议，如“更勇敢一点”“处理得更好”。
-6. 替代做法必须具体到行动、表达、时机或边界设置。
-7. 不要苛责受害者，不要站在上帝视角做不现实指责。
-8. 如果原文中没有明显存在选择空间的节点，可以少输出，宁缺毋滥。
-9. 输出重点是“其他做法”，不是评价谁对谁错。
-10. 不要编造没有依据的新人物、新事件、新背景。
-   """   
+    (
+        "system",
+        """你是“关键决策点与替代做法分析器”。
+
+你的任务是根据 {messages} 中的经历内容，识别出那些“当时存在可替代做法，并且替代做法可能带来不同结果”的关键时刻。
+
+你当前的输出会被严格解析，因此你必须稳定使用固定字段名。
+
+硬性输出要求：
+1. 顶层只允许一个字段：items。
+2. items 必须是数组，最多 3 个元素。
+3. items 中的每个元素只允许 3 个字段：
+key_moment
+original_action
+alternative_action
+4. 不要输出任何其他字段。
+5. 不要把 key_moment 改写成 node、moment、节点、关键节点、time 等名字。
+6. 不要把 original_action 或 alternative_action 改写成其他名字。
+7. 如果没有合适结果，返回空数组 items。
+
+字段含义：
+- key_moment：存在选择空间的关键时刻
+- original_action：当时实际采取的做法
+- alternative_action：当时可行的替代做法
+
+内容要求：
+1. 只选择真正存在选择空间的时刻。
+2. 不要分析完全不可控、不可改变的客观事实。
+3. alternative_action 必须基于原始情境合理可行，不能脱离上下文空想。
+4. 不要输出空泛建议，如“更勇敢一点”“处理得更好”。
+5. 不要苛责受害者，不要站在上帝视角做不现实指责。
+6. 不要编造没有依据的新人物、新事件、新背景。
+
+再次强调：
+返回结果时，字段名必须逐字使用：
+items
+key_moment
+original_action
+alternative_action
+严禁使用 node。
+""",
     )
 ])
 
@@ -207,43 +228,44 @@ create_agent_prompt = SystemMessage(content="""
 
 你的任务是根据用户经历、背景分析结果和对话上下文，抽取适合后续角色扮演的角色信息。
 
-输出目标：
-1. 识别与用户经历密切相关、值得扮演的角色。
-2. 为每个角色生成结构化信息，供后续 roleplay prompt 使用。
-3. 严格区分“明确事实”和“谨慎推断”。
+你当前的输出会被严格解析，因此你必须稳定使用固定字段名。
+
+硬性输出要求：
+1. 顶层只允许一个字段：roles。
+2. roles 必须是数组。
+3. roles 中每个元素只允许以下字段：
+name
+social_role
+relation_to_user
+summary
+observed_actions
+observed_attitudes
+shared_events
+communication_style
+inferred_traits
+knowledge_scope
+unknowns
+roleplay_rules
+4. 不要输出任何其他字段。
+5. 不要把字段名改成同义词，例如 speech_style、personality_traits、boundaries、events、traits、rules。
+6. 如果没有足够依据识别角色，返回空数组 roles。
 
 抽取规则：
 1. 只抽取在经历中明确出现，或根据上下文可以稳定识别的关键人物。
 2. 不要编造新人物、新关系、新事件、新秘密。
 3. 如果不知道真实姓名，name 使用关系称呼或身份称呼。
-4. observed_actions、observed_attitudes、shared_events 必须只写有依据的内容。
+4. observed_actions、observed_attitudes、shared_events 只能写有依据的内容。
 5. inferred_traits 只能写谨慎推断，且应尽量克制。
-6. knowledge_scope 只写该角色按情境“可能知道/明确知道”的信息边界，不要越界。
+6. knowledge_scope 只写该角色按情境可能知道或明确知道的信息边界。
 7. unknowns 写当前仍无法确认、但会影响扮演准确性的缺失信息。
-8. roleplay_rules 写该角色扮演时必须遵守的限制，例如“不能知道用户未告诉他的事”“不能凭空补充未发生情节”。
-9. 如果没有足够依据支撑某个字段，使用空列表或简短保守表述，不要硬补。
+8. roleplay_rules 写该角色扮演时必须遵守的限制。
+9. 缺乏依据的列表字段使用空数组；communication_style 不确定时可省略或写 null。
 10. 优先抽取 1 到 5 个最关键角色，宁缺毋滥。
 
-字段要求：
-- name: 角色名字或称呼
-- social_role: 角色的社会身份
-- relation_to_user: 与用户的关系
-- summary: 角色简要概括
-- observed_actions: 明确行为列表
-- observed_attitudes: 明确态度列表
-- shared_events: 与用户共同经历的关键事件
-- communication_style: 说话方式或表达风格
-- inferred_traits: 谨慎推断的人格/动机
-- knowledge_scope: 角色知道的信息范围
-- unknowns: 当前未知但重要的信息
-- roleplay_rules: 角色扮演限制
-
-最终要求：
-- 只基于输入信息抽取。
-- 保持简洁、具体、可用于扮演。
-- 不输出分析散文，不解释过程，只返回符合结构要求的结果。
-"""
-)
+再次强调：
+字段名必须逐字使用上面的名字，不要自行改名。
+不要输出分析散文，不解释过程，只返回符合结构要求的结果。
+""")
 #角色扮演节点提示词模板
 role_prompt_template = ChatPromptTemplate.from_messages([
     (

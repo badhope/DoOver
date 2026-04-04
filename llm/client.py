@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from llm.provider.kimi_llm import create_moonshot_llm
 from llm.provider.openai_llm import create_openai_llm
 from utils.load_config import load_json_config
 
@@ -40,13 +39,6 @@ def load_active_llm(config: dict[str, Any] | None = None) -> BaseChatModel:
     base_url = provider_config["base_url"]
     provider_type = provider_config["type"]
 
-    if provider_type == "moonshot":
-        return create_moonshot_llm(
-            model=model_name,
-            api_key=api_key,
-            base_url=base_url,
-        )
-
     if provider_type == "openai":
         return create_openai_llm(
             model_name=model_name,
@@ -66,14 +58,6 @@ def load_active_nostream_llm(config: dict[str, Any] | None = None) -> BaseChatMo
 
     base_url = provider_config["base_url"]
     provider_type = provider_config["type"]
-
-    if provider_type == "moonshot":
-        return create_moonshot_llm(
-            model=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            stream_usage=False,
-        )
 
     if provider_type == "openai":
         return create_openai_llm(
