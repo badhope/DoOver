@@ -1,6 +1,5 @@
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage
-
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 prompt_template = ChatPromptTemplate.from_messages([
     (
         "system",
@@ -182,7 +181,7 @@ turn_prompt_template = ChatPromptTemplate.from_messages([
         "system",
         """你是“关键决策点与替代做法分析器”。
 
-你的任务是根据 {messages} 中的经历内容，识别出那些“当时存在可替代做法，并且替代做法可能带来不同结果”的关键时刻。
+你的任务是根据经历内容，识别出那些“当时存在可替代做法，并且替代做法可能带来不同结果”的关键时刻。
 
 你当前的输出会被严格解析，因此你必须稳定使用固定字段名。
 
@@ -219,6 +218,10 @@ original_action
 alternative_action
 严禁使用 node。
 """,
+    ),
+    (
+        "human",
+        "以下是经历内容：{messages}"
     )
 ])
 
@@ -226,8 +229,8 @@ alternative_action
 create_agent_prompt = SystemMessage(content="""
 你是“角色信息抽取器”。
 
-你的任务是根据用户经历、背景分析结果和对话上下文，抽取适合后续角色扮演的角色信息。
-
+你的任务是根据用户经历、背景分析结果和对话上下文，以及转折点和用户选择的转折事件,抽取适合后续角色扮演的角色信息。
+创建的所有角色必须保证在同一时期,否则不创建该角色
 你当前的输出会被严格解析，因此你必须稳定使用固定字段名。
 
 硬性输出要求：
@@ -265,13 +268,14 @@ roleplay_rules
 再次强调：
 字段名必须逐字使用上面的名字，不要自行改名。
 不要输出分析散文，不解释过程，只返回符合结构要求的结果。
+创建的所有角色必须保证在同一时期,否则不创建该角色
 """)
 #角色扮演节点提示词模板
 role_prompt_template = ChatPromptTemplate.from_messages([
     (
         "system",
         """
-你将扮演用户经历中的一个人物，并始终以该人物的身份进行回复。
+你将扮演用户经历中的一个人物，并始终以该人物的身份进行询问或回复。
 【角色信息】
 姓名/称呼：{name}
 社会角色：{social_role}
@@ -310,4 +314,31 @@ role_prompt_template = ChatPromptTemplate.from_messages([
 请你以这个角色的身份，生成一句符合人物设定和当前情境的回复。
         """
     )
+])
+
+# 继续角色对话交互节点提示词
+role_interaction_prompt_template = ChatPromptTemplate.from_messages([
+    ("system",
+     """你是“角色互动补全决策节点”。
+你的任务是：
+根据提供的对话上下文，判断是否还需要让用户继续与某个角色互动一次，以补全关键信息。
+你可用的唯一工具是：
+interact_with_role(role_name, question)
+规则：
+1. 如果信息已经足够，不要调用任何工具，只输出：sufficient
+2. 只有当缺少“某个角色会如何回应、追问、表达态度、说明边界、暴露立场、推进互动”这类信息时，才调用 interact_with_role
+3. role_name 必须来自上下文中已经出现过的角色，禁止编造新角色
+4. question 必须写成该角色会对用户说的一句话或问的一个具体问题
+5. question 必须符合该角色已体现出的人设、关系和语气
+6. question 必须具体、自然、可回答，不能写成分析说明、旁白、总结或提示语
+7. 默认一次只调用一个角色；除非非常必要，不要一次调用多个角色
+8. 如果角色上下文不足以支撑可信互动，不要调用工具，只输出：insufficient_role_context
+9. 禁止输出长篇分析
+10. 禁止直接在正文里替代工具向用户发问；需要互动时必须调用 interact_with_role
+输出规则：
+- 需要角色互动：调用 interact_with_role
+- 不需要角色互动：只输出 sufficient
+- 角色上下文不足：只输出 insufficient_role_context
+"""),
+    MessagesPlaceholder("messages"),
 ])

@@ -5,11 +5,11 @@ from typing import Any, cast
 from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template
+from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template,role_interaction_prompt_template
 from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
-from tools.registry import active_tools
+from tools.registry import active_tools,interact_with_role
 from tools.interaction import ask_user_choice_impl
 from utils.ip_utils import get_country_by_ip
 from utils.logger import logger
@@ -160,10 +160,9 @@ async def turn_node(state: AgentState) -> AgentState:
     logger.info("turn_node")
     logger.print("node:" + "turn_node")
     structured_scenario = state.get("structured_scenario")
-    model = get_nostream_model().with_structured_output(AlternativeActionList)
+    model = get_nostream_model().with_structured_output(AlternativeActionList,method="json_schema",strict=True)
     prompt = turn_prompt_template.format_messages(
-        messages = structured_scenario,
-        method="function_calling"
+        messages = structured_scenario
     )
     raw_response = await model.ainvoke(prompt)
     logger.info(f"turn_node -> {raw_response}")
@@ -212,7 +211,7 @@ async def create_role_node(state: AgentState) -> AgentState:
     hummsg_info = HumanMessage(content=content)
     hummsg_choose = HumanMessage(content=chosen_action)
     prompt = [sysmsg, hummsg_info, hummsg_choose]
-    model = get_nostream_model().with_structured_output(RoleplayList)
+    model = get_nostream_model().with_structured_output(RoleplayList,method="json_schema",strict=True)
     raw_roles_info = await model.ainvoke(prompt)
     logger.info(raw_roles_info)
     roles_info = RoleplayList.model_validate(raw_roles_info)
@@ -263,4 +262,72 @@ async def role_node(state: AgentState) -> AgentState:
         else:
             response = response + chunk
     logger.info(f"role_node:{role_info.name} -> {final_text}")
-    return state
+    role_outputs = role_info.name + "say:" +final_text
+    return {
+        "role_outputs":[role_outputs],
+        "messages": [AIMessage(content=role_outputs)]
+    }
+
+# 判断角色和用户之间是否还缺失互动信息
+async def analyze_interaction_node(state: AgentState) -> AgentState:
+    logger.info("analyze_interaction_node")
+    logger.print("node: analyze_interaction_node")
+    model = get_model().bind_tools([interact_with_role])
+    messages = state.get("messages") or []
+    prompt = role_interaction_prompt_template.format_messages(
+        messages=messages
+    )
+    response = await model.ainvoke(prompt)
+    return {"messages": [response]}
+
+# 等待用户和角色交互
+async def wait_for_interaction_node(state: AgentState) -> AgentState:
+    logger.info("wait_for_interaction_node")
+    logger.print("node: wait_for_interaction_node")
+    field = "follow_up"
+    recent_tool_messages: list[ToolMessage] = []
+
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, ToolMessage):
+            recent_tool_messages.append(message)
+        else:
+            break
+    recent_tool_messages.reverse()
+
+    for message in reversed(recent_tool_messages):
+        if getattr(message, "name", None) != "interact_with_role":
+            continue
+        try:
+            payload = json.loads(cast(str, message.content))
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        if isinstance(payload, dict):
+            field = str(payload.get("field") or field)
+        break
+
+    event = await receive_websocket_event("interact_with_role")
+    answer_field = str(event.get("field") or field)
+    answer = str(event.get("answer") or "").strip()
+    emit_ws_event("user_answer_received", field=answer_field, answer=answer)
+    return {
+        "messages": [HumanMessage(content=f"用户回答信息（{answer_field}）：{answer}")],
+    }
+
+# 判断是否等待角色和用户交互
+def should_wait_for_role_interaction(state: AgentState):
+    logger.info("should_wait_for_role_interaction")
+    logger.print("node:" + "should_wait_for_role_interaction")
+    recent_tool_messages: list[ToolMessage] = []
+
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, ToolMessage):
+            recent_tool_messages.append(message)
+        else:
+            break
+    recent_tool_messages.reverse()
+
+    for message in recent_tool_messages:
+        if getattr(message, "name", None) == "interact_with_role":
+            return "wait"
+    return "continue"
+

@@ -35,3 +35,17 @@ async def ask_user_choice(alternative_action_list: AlternativeActionList) -> str
     Ask the user to choose from a list of options.
     """
     return await ask_user_choice_impl(alternative_action_list)
+
+# 扮演角色询问和用户对话工具
+@tool(name_or_callable="interact_with_role", return_direct=False)
+async def interact_with_role(role_name: str, question: str) -> str:
+    """
+    Ask the user to interact with a role.
+    """
+    payload = {
+        "role_name": role_name,
+        "question": question,
+        "field": "interact_with_role",
+    }
+    emit_ws_event("interact_with_role", **payload)
+    return json.dumps(payload, ensure_ascii=False)

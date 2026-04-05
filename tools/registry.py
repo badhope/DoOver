@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tools.interaction import ask_user,ask_user_choice
+from tools.interaction import ask_user,ask_user_choice,interact_with_role
 from tools.search import search_from_baidu, search_from_tavily
 from utils.load_config import load_json_config
 
@@ -22,6 +22,8 @@ active_tools.append(search_tool)
 active_tools.append(ask_user)
 active_tools.append(ask_user_choice)
 
+
 __all__ = [
     "active_tools",
+    "interact_with_role"
 ]
