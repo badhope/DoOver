@@ -54,7 +54,8 @@ type RoleInteractionItem = {
 
 type ModalMode = 'input' | 'question' | 'choice' | 'role' | null
 
-const WS_URL = 'ws://localhost:8765'
+const WS_BASE_URL = 'ws://localhost:8765'
+const SESSION_STORAGE_KEY = 'doover-session-id'
 const RECONNECT_DELAY_MS = 3000
 const bodyFont = '400 15px "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif'
 const smallFont = '400 14px "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif'
@@ -91,6 +92,7 @@ let timelineId = 0
 let roleInteractionId = 0
 let reconnectTimer: number | null = null
 let isUnmounting = false
+const sessionId = getOrCreateSessionId()
 
 const modalMode = computed<ModalMode>(() => {
   if (pendingChoice.value) return 'choice'
@@ -338,6 +340,29 @@ function clearReconnectTimer() {
   reconnectTimer = null
 }
 
+function createSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+function getOrCreateSessionId() {
+  const saved = window.sessionStorage.getItem(SESSION_STORAGE_KEY)?.trim()
+  if (saved) return saved
+
+  const nextId = createSessionId()
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextId)
+  return nextId
+}
+
+function buildWsUrl() {
+  const url = new URL(WS_BASE_URL)
+  url.searchParams.set('session_id', sessionId)
+  return url.toString()
+}
+
 function scheduleReconnect(status = '连接失败，3 秒后重试') {
   if (isUnmounting || reconnectTimer !== null) return
   setStatus(status, false)
@@ -471,7 +496,7 @@ function connect() {
 
   clearReconnectTimer()
   setStatus('连接中', false)
-  const nextSocket = new WebSocket(WS_URL)
+  const nextSocket = new WebSocket(buildWsUrl())
   socket = nextSocket
 
   nextSocket.onopen = () => {
