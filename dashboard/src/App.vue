@@ -66,6 +66,7 @@ const steps = ref<StepState[]>([])
 const searchItems = ref<SearchItem[]>([])
 const searchLoading = ref(false)
 const analysisBuffer = ref('')
+const continuationBuffer = ref('')
 const timelineItems = ref<TimelineItem[]>([])
 const roleInteractions = ref<RoleInteractionItem[]>([])
 const activeNode = ref('idle')
@@ -76,6 +77,7 @@ const pendingRoleInteraction = ref<PendingRoleInteraction | null>(null)
 const analysisStreaming = ref(false)
 const streamRef = ref<HTMLElement | null>(null)
 const analysisRef = ref<HTMLElement | null>(null)
+const continuationRef = ref<HTMLElement | null>(null)
 const timelineRef = ref<HTMLElement | null>(null)
 const roleRef = ref<HTMLElement | null>(null)
 const modalInputRef = ref<HTMLTextAreaElement | null>(null)
@@ -152,6 +154,12 @@ const roleCardPill = computed(() => {
   return 'idle'
 })
 
+const continuationCardPill = computed(() => {
+  if (activeNode.value === 'continue_next_node') return 'streaming'
+  if (continuationBuffer.value.trim()) return 'ready'
+  return 'idle'
+})
+
 function setStatus(text: string, connected = false) {
   statusText.value = text
   isConnected.value = connected
@@ -159,6 +167,7 @@ function setStatus(text: string, connected = false) {
 
 function resetSession(inputText = '') {
   analysisBuffer.value = ''
+  continuationBuffer.value = ''
   searchBuffer = ''
   pendingQuestion.value = null
   pendingChoice.value = null
@@ -226,6 +235,10 @@ function renderSearchLoading() {
 
 function appendAnalysis(text: string) {
   analysisBuffer.value += text
+}
+
+function appendContinuation(text: string) {
+  continuationBuffer.value += text
 }
 
 function normalizeSearchItem(item: unknown): SearchItem {
@@ -420,6 +433,12 @@ function handleLine(rawLine: string) {
     return
   }
 
+  if (trimmed.startsWith('continue_next_node:')) {
+    finishNode()
+    appendContinuation(trimmed.slice('continue_next_node:'.length))
+    return
+  }
+
   if (trimmed.startsWith('Baidu Search Result:')) {
     finishNode()
     renderSearchResult(trimmed.slice('Baidu Search Result:'.length).trim())
@@ -557,6 +576,7 @@ function handleModalKeydown(event: KeyboardEvent) {
 watch(
   [
     analysisBuffer,
+    continuationBuffer,
     () => timelineItems.value.length,
     () => searchItems.value.length,
     () => roleInteractions.value.length,
@@ -569,6 +589,9 @@ watch(
     }
     if (analysisRef.value) {
       analysisRef.value.scrollTop = analysisRef.value.scrollHeight
+    }
+    if (continuationRef.value) {
+      continuationRef.value.scrollTop = continuationRef.value.scrollHeight
     }
     if (timelineRef.value) {
       timelineRef.value.scrollTop = timelineRef.value.scrollHeight
@@ -732,6 +755,25 @@ onBeforeUnmount(() => {
 
                     <div v-if="roleInteractions.length === 0" class="empty-copy">等待角色互动问题</div>
                   </div>
+                </div>
+              </section>
+
+              <section class="card card-secondary continuation-card">
+                <div class="card-head">
+                  <strong>后续推演</strong>
+                  <span class="pill">{{ continuationCardPill }}</span>
+                </div>
+                <div ref="continuationRef" class="card-body continuation-body">
+                  <PretextBlock
+                    v-if="continuationBuffer"
+                    class="rich-text continuation-text"
+                    :text="continuationBuffer"
+                    :font="bodyFont"
+                    :line-height="28"
+                    white-space="pre-wrap"
+                    :streaming="analysisStreaming"
+                  />
+                  <div v-else class="empty-copy">等待后续推演输出</div>
                 </div>
               </section>
 

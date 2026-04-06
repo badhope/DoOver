@@ -23,6 +23,7 @@
   --sidebar-search-height: 320px;
   --analysis-card-height: 280px;
   --role-card-height: 260px;
+  --continuation-card-height: 300px;
   --timeline-card-height: 280px;
 }
 
@@ -389,6 +390,7 @@ a {
 }
 
 .analysis-card,
+.continuation-card,
 .timeline-card {
   display: flex;
   flex-direction: column;
@@ -404,6 +406,10 @@ a {
 
 .role-card {
   height: var(--role-card-height);
+}
+
+.continuation-card {
+  height: var(--continuation-card-height);
 }
 
 .timeline-card {
@@ -461,6 +467,7 @@ a {
 }
 
 .analysis-body,
+.continuation-body,
 .role-body,
 .timeline-body {
   flex: 1;
@@ -468,6 +475,10 @@ a {
 }
 
 .analysis-body {
+  overflow: auto;
+}
+
+.continuation-body {
   overflow: auto;
 }
 
@@ -528,6 +539,10 @@ a {
 }
 
 .rich-text {
+  color: var(--text);
+}
+
+.continuation-text {
   color: var(--text);
 }
 
@@ -861,6 +876,10 @@ a {
 
   .role-card {
     height: 260px;
+  }
+
+  .continuation-card {
+    height: 360px;
   }
 
   .timeline-card {

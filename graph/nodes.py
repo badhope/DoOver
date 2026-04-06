@@ -5,7 +5,7 @@ from typing import Any, cast
 from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template,role_interaction_prompt_template
+from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template,role_interaction_prompt_template,continue_next_prompt_template
 from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
@@ -330,4 +330,28 @@ def should_wait_for_role_interaction(state: AgentState):
         if getattr(message, "name", None) == "interact_with_role":
             return "wait"
     return "continue"
+
+# 继续推理节点
+async def continue_next_node(state: AgentState) -> AgentState:
+    logger.info("continue_next_node")
+    logger.print("node:" + "continue_next_node")
+    model = get_model().bind_tools([interact_with_role])
+    messages = state.get("messages") or []
+    prompt = continue_next_prompt_template.format_messages(
+        messages=messages
+    )
+    final_text = ""
+    response: Any = None
+    async for chunk in model.astream(prompt):
+        chunk = cast(Any, chunk)
+        text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
+        if text:
+            logger.print("continue_next_node:" + text, end="")
+            final_text += text
+        if response is None:
+            response = chunk
+        else:
+            response = response + chunk
+    return {"messages": [response]}
+
 

@@ -18,7 +18,8 @@ from graph.nodes import (
     role_node,
     analyze_interaction_node,
     wait_for_interaction_node,
-    should_wait_for_role_interaction
+    should_wait_for_role_interaction,
+    continue_next_node
 )
 from graph.state import AgentState
 from tools.registry import active_tools,interact_with_role
@@ -38,12 +39,15 @@ graph.add_node("role_node", role_node)
 graph.add_node("create_role_node", create_role_node)
 graph.add_node("analyze_interaction_node",analyze_interaction_node)
 graph.add_node("tool_node2", ToolNode(tools=[interact_with_role]))
-graph.add_node("wait_for_interaction_node", wait_for_interaction_node)
+graph.add_node("wait_for_interaction_from_analyze", wait_for_interaction_node)
+graph.add_node("continue_next_node", continue_next_node)
 graph.set_entry_point("init_world_params")
 
 graph.add_edge("init_world_params", "intake_node")
 graph.add_edge("intake_node", "background_node")
 graph.add_edge("background_node", "agent_node")
+graph.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
+graph.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
 graph.add_conditional_edges(
     "agent_node",
     should_continue,
@@ -70,18 +74,35 @@ graph.add_conditional_edges(
     should_continue,
     {
         "continue": "tool_node2",
-        "end": END,
+        "end": "continue_next_node",
     },
 )
 graph.add_conditional_edges(
     "tool_node2",
     should_wait_for_role_interaction,
     {
-        "wait": "wait_for_interaction_node",
+        "wait": "wait_for_interaction_from_analyze",
         "continue": "analyze_interaction_node",
     },
 )
-graph.add_edge("wait_for_interaction_node", "analyze_interaction_node")
+graph.add_edge("wait_for_interaction_from_analyze", "analyze_interaction_node")
+graph.add_conditional_edges(
+    "continue_next_node",
+    should_continue,
+    {
+        "continue": "tool_node3",
+        "end": END,
+    },
+)
+graph.add_conditional_edges(
+    "tool_node3",
+    should_wait_for_role_interaction,
+    {
+        "wait": "wait_for_interaction_from_continue",
+        "continue": "continue_next_node",
+    },
+)
+graph.add_edge("wait_for_interaction_from_continue", "continue_next_node")
 app = graph.compile()
 
 from IPython.display import Image,display
