@@ -54,13 +54,19 @@ class SessionState:
     event_queues: dict[str, asyncio.Queue[dict[str, Any]]] = field(
         default_factory=lambda: defaultdict(asyncio.Queue)
     )
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 # 进程内的 session 注册表。
 # key 是 session_id，value 是这个 session 对应的状态对象。
 _sessions: dict[str, SessionState] = {}
 
+def set_session_meta(session_id: str, **kwargs: Any) -> None:
+    s = _get_session_state(session_id)
+    s.meta.update(kwargs)
 
+def get_session_meta(session_id: str, key: str, default: Any = None) -> Any:
+    return _get_session_state(session_id).meta.get(key, default)
 def normalize_session_id(session_id: str | None = None) -> str:
     """
     统一解析 session_id。

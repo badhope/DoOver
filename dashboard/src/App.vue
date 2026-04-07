@@ -54,7 +54,8 @@ type RoleInteractionItem = {
 
 type ModalMode = 'input' | 'question' | 'choice' | 'role' | null
 
-const WS_BASE_URL = 'ws://localhost:8765'
+const API_BASE_URL = 'http://localhost:8000'
+const WS_BASE_URL = 'ws://localhost:8000/ws'
 const SESSION_STORAGE_KEY = 'doover-session-id'
 const RECONNECT_DELAY_MS = 3000
 const bodyFont = '400 15px "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif'
@@ -363,6 +364,24 @@ function buildWsUrl() {
   return url.toString()
 }
 
+async function ensureLogin() {
+  try {
+    await fetch(`${API_BASE_URL}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: 'doover',
+        password: 'doover',
+      }),
+    })
+  } catch {
+    // ignore to allow guest fallback
+  }
+}
+
 function scheduleReconnect(status = '连接失败，3 秒后重试') {
   if (isUnmounting || reconnectTimer !== null) return
   setStatus(status, false)
@@ -639,8 +658,9 @@ watch(
   { flush: 'post' },
 )
 
-onMounted(() => {
+onMounted(async () => {
   setLocale(document.documentElement.lang || navigator.language || 'zh-CN')
+  await ensureLogin()
   connect()
 })
 
