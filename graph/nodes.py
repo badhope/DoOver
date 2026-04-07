@@ -16,6 +16,12 @@ from utils.logger import logger
 from utils.websocket import emit_ws_event, receive_websocket_event
 
 
+#登录成功节点
+async def login_success_node(state: AgentState) -> AgentState:
+    logger.info("login_success_node")
+    logger.print("node:" + "login_success_node")
+    return state
+
 # 初始化世界参数节点
 async def init_world_params(state: AgentState) -> AgentState:
     logger.info("init_world_params")
@@ -53,26 +59,28 @@ async def background_node(state: AgentState) -> dict[str, Any]:
         world_info=world_info,
     )
     messages = state.get("messages", [])
-    content = prompt_messages + messages
+    structured_scenario = state.get("structured_scenario", "")
+    aimessages = [HumanMessage(content=structured_scenario)]
+    content = prompt_messages + messages + aimessages
     model = get_model()
 
     final_text = ""
     response: Any = None
-
-    async for chunk in model.astream(content):
-        chunk = cast(Any, chunk)
-        text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
-        if text:
-            logger.print("background_node_msg:" + text, end="")
-            final_text += text
-        if response is None:
-            response = chunk
-        else:
-            response = response + chunk
-
+    try:
+        async for chunk in model.astream(content):
+            chunk = cast(Any, chunk)
+            text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
+            if text:
+                logger.print("background_node_msg:" + text, end="")
+                final_text += text
+            if response is None:
+                response = chunk
+            else:
+                response = response + chunk
+    except Exception as e:
+        logger.error(e)
     return {
-        "structured_scenario": final_text,
-        "messages": [cast(BaseMessage, response)],
+        "structured_scenario": final_text
     }
 
 # 等待用户补充信息节点
@@ -113,9 +121,17 @@ async def agent_node(state: AgentState):
     logger.info("agent_node")
     logger.print("node:" + "agent_node")
     model = get_model().bind_tools(active_tools)
-    messages = state.get("messages") or []
-    prompt = messages + [refine_prompt]
-    response = await model.ainvoke(prompt)
+    messages = state.get("structured_scenario") or []
+    prompt = [messages] + [refine_prompt]
+    chunks = []
+    async for chunk in model.astream(prompt):
+        chunks.append(chunk)
+        if getattr(chunk, "content", None):
+            logger.print(chunk.content)
+    final = chunks[0]
+    for c in chunks[1:]:
+        final = final + c
+    response = AIMessage(content=final.content, additional_kwargs=getattr(final, "additional_kwargs", None) or {})
     return {"messages": response}
 
 # 判断是否继续
@@ -160,11 +176,16 @@ async def turn_node(state: AgentState) -> AgentState:
     logger.info("turn_node")
     logger.print("node:" + "turn_node")
     structured_scenario = state.get("structured_scenario")
-    model = get_nostream_model().with_structured_output(AlternativeActionList,method="json_schema",strict=True)
+    model = get_nostream_model().with_structured_output(AlternativeActionList,method="json_mode")
     prompt = turn_prompt_template.format_messages(
         messages = structured_scenario
     )
-    raw_response = await model.ainvoke(prompt)
+    prompt.append(HumanMessage(content="Please output valid JSON only."))
+    try:
+        raw_response = await model.ainvoke(prompt)
+    except Exception as e:
+        logger.error(e)
+        return state
     logger.info(f"turn_node -> {raw_response}")
     response = AlternativeActionList.model_validate(raw_response)
     return {
@@ -211,8 +232,13 @@ async def create_role_node(state: AgentState) -> AgentState:
     hummsg_info = HumanMessage(content=content)
     hummsg_choose = HumanMessage(content=chosen_action)
     prompt = [sysmsg, hummsg_info, hummsg_choose]
-    model = get_nostream_model().with_structured_output(RoleplayList,method="json_schema",strict=True)
-    raw_roles_info = await model.ainvoke(prompt)
+    prompt.append(HumanMessage(content="Please output valid JSON only."))
+    model = get_nostream_model().with_structured_output(RoleplayList,method="json_mode")
+    try:
+        raw_roles_info = await model.ainvoke(prompt)
+    except Exception as e:
+        logger.error(e)
+        return state
     logger.info(raw_roles_info)
     roles_info = RoleplayList.model_validate(raw_roles_info)
     logger.info(roles_info)
@@ -273,7 +299,8 @@ async def analyze_interaction_node(state: AgentState) -> AgentState:
     logger.info("analyze_interaction_node")
     logger.print("node: analyze_interaction_node")
     model = get_model().bind_tools([interact_with_role])
-    messages = state.get("messages") or []
+    structured_scenario = state.get("structured_scenario")
+    messages =  [structured_scenario]+state.get("messages",[])
     prompt = role_interaction_prompt_template.format_messages(
         messages=messages
     )
@@ -336,7 +363,7 @@ async def continue_next_node(state: AgentState) -> AgentState:
     logger.info("continue_next_node")
     logger.print("node:" + "continue_next_node")
     model = get_model().bind_tools([interact_with_role])
-    messages = state.get("messages") or []
+    messages = [state.get("structured_scenario")]+state.get("messages",[])
     prompt = continue_next_prompt_template.format_messages(
         messages=messages
     )

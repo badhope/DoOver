@@ -3,6 +3,7 @@ import json
 from contextlib import suppress
 from functools import partial
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket
@@ -11,6 +12,8 @@ from pydantic import BaseModel
 
 from graph.graph import build_auth_app, build_guest_app
 from graph.state import AgentState
+from user.update_name_pswd import update_username_and_password
+from utils.load_config import load_json_config, save_json_config
 from utils.websocket import (
     create_session,
     get_session_meta,
@@ -42,6 +45,34 @@ class LoginBody(BaseModel):
     username: str
     password: str
 
+class ActivateLLMBody(BaseModel):
+    provider: str
+    model: str | None = None
+
+
+class AddProviderBody(BaseModel):
+    provider: str
+    type: str = "openai"
+    base_url: str
+    api_key: str
+    models: list[str]
+    set_active: bool = False
+
+
+class AddModelBody(BaseModel):
+    provider: str
+    model: str
+    set_active: bool = False
+
+
+class DeleteProviderBody(BaseModel):
+    provider: str
+
+
+
+class DeleteModelBody(BaseModel):
+    provider: str
+    model: str
 
 def _normalize_app_key(app_key: str) -> str:
     key = str(app_key or "").strip().lower()
@@ -233,6 +264,185 @@ async def logout(request: Request, response: Response) -> dict[str, bool]:
     response.delete_cookie(key=AUTH_COOKIE_KEY, path="/")
     return {"ok": True}
 
+#修改用户名密码
+@app.put("/update_user")
+async def update_user(request: Request, user: LoginBody) -> dict[str, bool]:
+    token = request.cookies.get(AUTH_COOKIE_KEY)
+    if not token or not resolve_user_from_token(token):
+        raise HTTPException(status_code=401, detail="未登录")
+    try:
+        await update_username_and_password(token, user.username, user.password)
+    except Exception as e:
+        raise e
+    return {"ok": True}
+
+PROVIDER_CONFIG_PATH = Path("llm/config/provider.json")
+
+#更换llm_model
+@app.put("/update_llm")
+async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, str]:
+    token = request.cookies.get(AUTH_COOKIE_KEY)
+    user_name = await resolve_user_from_token(token) if token else None
+    if not user_name:
+        raise HTTPException(status_code=401, detail="not logged in")
+
+    provider = payload.provider.strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    provider_conf = providers[provider]
+    models = provider_conf.get("models")
+    if not isinstance(models, list) or not models:
+        raise HTTPException(status_code=400, detail="provider has no models")
+
+    if payload.model and payload.model.strip():
+        model = payload.model.strip()
+    else:
+        model = str(models[0])
+
+    if model not in models:
+        raise HTTPException(status_code=400, detail="model not in provider models")
+
+    data["active_llm_provider"] = provider
+    data["active_llm_model"] = model
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+
+    return {"provider": provider, "model": model}
+
+
+
+async def _require_login_token(request: Request) -> str:
+    token = request.cookies.get(AUTH_COOKIE_KEY)
+    if not token or not await resolve_user_from_token(token):
+        raise HTTPException(status_code=401, detail="not logged in")
+    return token
+
+
+@app.put("/add_llm_provider")
+async def add_llm_provider(request: Request, payload: AddProviderBody) -> dict[str, str]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+
+    models = [m.strip() for m in payload.models if str(m).strip()]
+    if not models:
+        raise HTTPException(status_code=400, detail="models is required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict):
+        raise HTTPException(status_code=500, detail="invalid provider config")
+
+    if provider in providers:
+        raise HTTPException(status_code=400, detail="provider already exists")
+
+    providers[provider] = {
+        "type": payload.type.strip() or "openai",
+        "base_url": payload.base_url.strip(),
+        "api_key": payload.api_key.strip(),
+        "models": models,
+    }
+
+    if payload.set_active:
+        data["active_llm_provider"] = provider
+        data["active_llm_model"] = models[0]
+
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+    return {"provider": provider, "model": models[0]}
+
+
+@app.put("/add_llm_model")
+async def add_llm_model(request: Request, payload: AddModelBody) -> dict[str, str]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    model = payload.model.strip()
+    if not provider or not model:
+        raise HTTPException(status_code=400, detail="provider and model are required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    provider_conf = providers[provider]
+    models = provider_conf.get("models")
+    if not isinstance(models, list):
+        raise HTTPException(status_code=500, detail="invalid provider models")
+
+    if model not in models:
+        models.append(model)
+
+    if payload.set_active:
+        data["active_llm_provider"] = provider
+        data["active_llm_model"] = model
+
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+    return {"provider": provider, "model": model}
+
+
+@app.delete("/delete_llm_provider")
+async def delete_llm_provider(request: Request, payload: DeleteProviderBody) -> dict[str, str]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    if len(providers) <= 1:
+        raise HTTPException(status_code=400, detail="cannot delete last provider")
+
+    active_provider = str(data.get("active_llm_provider") or "").strip()
+    if active_provider == provider:
+        raise HTTPException(status_code=400, detail="provider is currently active")
+
+    del providers[provider]
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+    return {"deleted_provider": provider}
+
+
+@app.delete("/delete_llm_model")
+async def delete_llm_model(request: Request, payload: DeleteModelBody) -> dict[str, str]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    model = payload.model.strip()
+    if not provider or not model:
+        raise HTTPException(status_code=400, detail="provider and model are required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    provider_conf = providers[provider]
+    models = provider_conf.get("models")
+    if not isinstance(models, list) or model not in models:
+        raise HTTPException(status_code=400, detail="model not found")
+
+    if len(models) <= 1:
+        raise HTTPException(status_code=400, detail="cannot delete last model in provider")
+
+    active_provider = str(data.get("active_llm_provider") or "").strip()
+    active_model = str(data.get("active_llm_model") or "").strip()
+    if active_provider == provider and active_model == model:
+        raise HTTPException(status_code=400, detail="model is currently active")
+
+    models.remove(model)
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+    return {"provider": provider, "deleted_model": model}
 
 if __name__ == "__main__":
     uvicorn.run("test:app", host="0.0.0.0", port=8000, reload=False)

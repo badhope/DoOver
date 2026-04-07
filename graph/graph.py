@@ -6,6 +6,7 @@ from graph.nodes import (
     background_node,
     init_world_params,
     intake_node,
+    login_success_node,
     should_continue,
     should_wait_for_user,
     wait_user_node,
@@ -109,7 +110,7 @@ def build_guest_app():
 def build_auth_app():
 
     auth = StateGraph(AgentState)
-
+    auth.add_node("login_success_node", login_success_node)
     auth.add_node("init_world_params", init_world_params)
     auth.add_node("intake_node", intake_node)
     auth.add_node("background_node", background_node)
@@ -124,13 +125,15 @@ def build_auth_app():
     auth.add_node("tool_node2", ToolNode(tools=[interact_with_role]))
     auth.add_node("wait_for_interaction_from_analyze", wait_for_interaction_node)
     auth.add_node("continue_next_node", continue_next_node)
-    auth.set_entry_point("init_world_params")
+    auth.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
+    auth.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
+    auth.set_entry_point("login_success_node")
+    auth.add_edge("login_success_node", "init_world_params")
 
     auth.add_edge("init_world_params", "intake_node")
     auth.add_edge("intake_node", "background_node")
     auth.add_edge("background_node", "agent_node")
-    auth.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
-    auth.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
+
     auth.add_conditional_edges(
         "agent_node",
         should_continue,
