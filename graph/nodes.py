@@ -121,18 +121,10 @@ async def agent_node(state: AgentState):
     logger.info("agent_node")
     logger.print("node:" + "agent_node")
     model = get_model().bind_tools(active_tools)
-    messages = state.get("structured_scenario") or []
-    prompt = [messages] + [refine_prompt]
-    chunks = []
-    async for chunk in model.astream(prompt):
-        chunks.append(chunk)
-        if getattr(chunk, "content", None):
-            logger.print(chunk.content)
-    final = chunks[0]
-    for c in chunks[1:]:
-        final = final + c
-    response = AIMessage(content=final.content, additional_kwargs=getattr(final, "additional_kwargs", None) or {})
-    return {"messages": response}
+    messages = state.get("structured_scenario") or ""
+    prompt = [refine_prompt, HumanMessage(content=messages)]
+    response = await model.ainvoke(prompt)
+    return {"messages": [response]}
 
 # 判断是否继续
 def should_continue(state: AgentState):
