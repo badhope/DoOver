@@ -273,7 +273,6 @@ async def role_node(state: AgentState) -> AgentState:
         chunk = cast(Any, chunk)
         text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
         if text:
-            logger.print(f"role_node:{role_info.name}" + text, end="")
             final_text += text
         if response is None:
             response = chunk

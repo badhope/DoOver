@@ -121,7 +121,7 @@ async def search_from_baidu(query: str) -> str:
     """
     result = await baidu_qianfan_web_search(content=query)
     result = result["references"]
-    logger.print(f"Baidu Search Result: {json.dumps(result, ensure_ascii=False)}")
+    logger.print(f"Search_Result: {json.dumps(result, ensure_ascii=False)}")
     return json.dumps(result, ensure_ascii=False)
 
 @tool(name_or_callable="web_search",
@@ -132,5 +132,5 @@ async def search_from_baidu(query: str) -> str:
       return_direct=False)
 async def search_from_tavily(query: str,tavily_api_key)->str:
     result =  await tavily_web_search(query,tavily_api_key)
-    logger.info(f"Tavily Search Result: {json.dumps(result, ensure_ascii=False)}")
+    logger.info(f"Search_Result: {json.dumps(result, ensure_ascii=False)}")
     return json.dumps(result, ensure_ascii=False)

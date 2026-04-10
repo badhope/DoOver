@@ -483,9 +483,9 @@ function handleLine(rawLine: string) {
     return
   }
 
-  if (trimmed.startsWith('Baidu Search Result:')) {
+  if (trimmed.startsWith('Search_Result:')) {
     finishNode()
-    renderSearchResult(trimmed.slice('Baidu Search Result:'.length).trim())
+    renderSearchResult(trimmed.slice('Search_Result:'.length).trim())
     return
   }
 
