@@ -60,7 +60,7 @@ http://localhost:5173
 - 发送：`user_answer`
 - 接收：`ask_user`
 - 接收：普通流式文本行
-- 接收：`Baidu Search Result: ...`
+- 接收：`Search_Result: ...`
 
 如果本地没有这个服务：
 

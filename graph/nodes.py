@@ -234,7 +234,6 @@ async def create_role_node(state: AgentState) -> AgentState:
     logger.info(raw_roles_info)
     roles_info = RoleplayList.model_validate(raw_roles_info)
     logger.info(roles_info)
-    state["roles_info"] = roles_info.roles
     return {
         "roles_info": roles_info.roles
     }
