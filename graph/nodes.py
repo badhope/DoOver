@@ -24,6 +24,8 @@ async def login_success_node(state: AgentState) -> AgentState:
 
 # 初始化世界参数节点
 async def init_world_params(state: AgentState) -> AgentState:
+    logger.print(f"role_node_msg:{"小妹妹"} -> {"早上好"}")
+    logger.print(f"role_node_msg:{"小哥哥"} -> {"晚安"}")
     logger.info("init_world_params")
     logger.print("node:" + "init_world_params")
     time = get_current_time()
@@ -277,7 +279,7 @@ async def role_node(state: AgentState) -> AgentState:
             response = chunk
         else:
             response = response + chunk
-    logger.info(f"role_node:{role_info.name} -> {final_text}")
+    logger.print(f"role_node_msg:{role_info.name} -> {final_text}")
     role_outputs = role_info.name + "say:" +final_text
     return {
         "role_outputs":[role_outputs],
