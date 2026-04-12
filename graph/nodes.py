@@ -277,7 +277,7 @@ async def role_node(state: AgentState) -> AgentState:
             final_text += text
         if response is None:
             response = chunk
-        else:
+        else: 
             response = response + chunk
     logger.print(f"role_node_msg:{role_info.name} -> {final_text}")
     role_outputs = role_info.name + "say:" +final_text
