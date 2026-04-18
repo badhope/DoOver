@@ -113,7 +113,7 @@ async def run_session(session_id: str) -> None:
                 get_session_meta(session_id, "app_key", DEFAULT_APP_KEY)
             ).strip().lower()
             graph_app = APPS.get(app_key, APPS[DEFAULT_APP_KEY])
-            state: AgentState = {"raw_input": text}
+            state: AgentState = {"raw_input": [text]}
             async for _ in graph_app.astream(state, stream_mode="values"):
                 pass
     finally:

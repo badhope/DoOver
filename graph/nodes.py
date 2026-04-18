@@ -4,7 +4,7 @@ from typing import Any, cast
 from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import prompt_template,refine_prompt,turn_prompt_template,create_agent_prompt,role_prompt_template,role_interaction_prompt_template,continue_next_prompt_template
+from graph.prompts import background_prompt,refine_prompt,turn_prompt,create_agent_prompt,role_prompt_template,role_interaction_prompt,continue_next_prompt
 from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
@@ -14,7 +14,6 @@ from utils.ip_utils import get_country_by_ip
 from utils.logger import logger
 from utils.websocket import emit_ws_event, receive_websocket_event
 from datetime import datetime
-
 #登录成功节点
 async def login_success_node(state: AgentState) -> AgentState:
     logger.info("login_success_node")
@@ -45,24 +44,20 @@ async def intake_node(state: AgentState) -> AgentState:
     if not raw_input:
         raise ValueError("raw_input is required")
     return {
-        "raw_input": raw_input.strip(),
-        "messages": [HumanMessage(content=raw_input.strip())],
+        "raw_input": raw_input
     }
 
 # 分析获取背景信息节点
 async def background_node(state: AgentState) -> dict[str, Any]:
     logger.info("background_node")
     logger.print("node:" + "background_node")
-    raw_input = state.get("raw_input", "")
     world_info = state.get("world_info", {})
-    prompt_messages = prompt_template.format_messages(
-        raw_input=raw_input,
-        world_info=world_info,
-    )
-    messages = state.get("messages", [])
-    structured_scenario = state.get("structured_scenario", "")
-    aimessages = [HumanMessage(content=structured_scenario)]
-    content = prompt_messages + messages + aimessages
+    prompt_messages: list[BaseMessage] = [background_prompt]
+    content = prompt_messages
+    content.append(SystemMessage(json.dumps(world_info)))
+    raw_input_parts = state.get("raw_input", [])
+    raw_input_text = "\n".join(raw_input_parts)
+    content.append(HumanMessage(raw_input_text))
     model = get_model()
 
     final_text = ""
@@ -114,7 +109,7 @@ async def wait_user_node(state: AgentState) -> AgentState:
     answer = str(event.get("answer") or "").strip()
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
     return {
-        "messages": [HumanMessage(content=f"用户补充信息（{answer_field}）：{answer}")],
+        "raw_input": [answer]
     }
 
 # 分析调用工具节点
@@ -122,8 +117,13 @@ async def agent_node(state: AgentState):
     logger.info("agent_node")
     logger.print("node:" + "agent_node")
     model = get_model().bind_tools(active_tools)
-    messages = state.get("structured_scenario") or ""
-    prompt = [refine_prompt, HumanMessage(content=messages)]
+    structured_scenario = state.get("structured_scenario", "")
+    recent_messages = state.get("messages", [])
+    prompt: list[BaseMessage] = []
+    prompt.append(refine_prompt)
+    prompt.extend(recent_messages)
+    if structured_scenario:
+        prompt.append(HumanMessage(structured_scenario))
     response = await model.ainvoke(prompt)
     return {"messages": [response]}
 
@@ -170,10 +170,10 @@ async def turn_node(state: AgentState) -> AgentState:
     logger.print("node:" + "turn_node")
     structured_scenario = state.get("structured_scenario")
     model = get_nostream_model().with_structured_output(AlternativeActionList,method="json_mode")
-    prompt = turn_prompt_template.format_messages(
-        messages = structured_scenario
-    )
-    prompt.append(HumanMessage(content="Please output valid JSON only."))
+    prompt = []
+    prompt.append(HumanMessage(structured_scenario))
+    prompt.append(turn_prompt)
+    prompt.append(SystemMessage("Please output valid JSON only."))
     try:
         raw_response = await model.ainvoke(prompt)
     except Exception as e:
@@ -205,7 +205,7 @@ async def user_choice_node(state: AgentState) -> AgentState:
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
     return {
         "chosen_action": answer,
-        "messages": [HumanMessage(content=f"用户选择信息（{answer_field}）：{answer}")],
+        "messages": [HumanMessage(f"用户选择信息（{answer_field}）：{answer}")],
     }
 # 创建角色节点
 async def create_role_node(state: AgentState) -> AgentState:
@@ -216,16 +216,11 @@ async def create_role_node(state: AgentState) -> AgentState:
         raise ValueError("chosen_action 缺失")
     sysmsg = create_agent_prompt
     structured_scenario = state.get("structured_scenario")
-    if isinstance(structured_scenario, dict):
-        content = json.dumps(structured_scenario, ensure_ascii=False)
-    elif isinstance(structured_scenario, str):
-        content = structured_scenario
-    else:
-        content = ""
-    hummsg_info = HumanMessage(content=content)
-    hummsg_choose = HumanMessage(content=chosen_action)
-    prompt = [sysmsg, hummsg_info, hummsg_choose]
-    prompt.append(HumanMessage(content="Please output valid JSON only."))
+    prompt = []
+    prompt.append(HumanMessage(structured_scenario))
+    prompt.append(HumanMessage(chosen_action))
+    prompt.append(sysmsg)
+    prompt.append(SystemMessage("Please output valid JSON only."))
     model = get_nostream_model().with_structured_output(RoleplayList,method="json_mode")
     try:
         raw_roles_info = await model.ainvoke(prompt)
@@ -281,8 +276,7 @@ async def role_node(state: AgentState) -> AgentState:
     logger.print(f"role_node_msg:{role_info.name} -> {final_text}")
     role_outputs = role_info.name + "say:" +final_text
     return {
-        "role_outputs":[role_outputs],
-        "messages": [AIMessage(content=role_outputs)]
+        "messages": [AIMessage(role_outputs)]
     }
 
 # 判断角色和用户之间是否还缺失互动信息
@@ -291,11 +285,13 @@ async def analyze_interaction_node(state: AgentState) -> AgentState:
     logger.print("node: analyze_interaction_node")
     model = get_model().bind_tools([interact_with_role])
     structured_scenario = state.get("structured_scenario")
-    messages =  [structured_scenario]+state.get("messages",[])
-    prompt = role_interaction_prompt_template.format_messages(
-        messages=messages
-    )
-    response = await model.ainvoke(prompt)
+    messages: list[BaseMessage] = []
+    messages.append(HumanMessage(structured_scenario))
+    messages.append(role_interaction_prompt)
+    messages.extend(state.get("messages", []))
+
+    response = await model.ainvoke(messages)
+    logger.info(f"analyze_interaction_node -> {response}")
     return {"messages": [response]}
 
 # 等待用户和角色交互
@@ -328,7 +324,7 @@ async def wait_for_interaction_node(state: AgentState) -> AgentState:
     answer = str(event.get("answer") or "").strip()
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
     return {
-        "messages": [HumanMessage(content=f"用户回答信息（{answer_field}）：{answer}")],
+        "messages": [HumanMessage(f"用户回答信息：{answer}")],
     }
 
 # 判断是否等待角色和用户交互
@@ -353,11 +349,13 @@ def should_wait_for_role_interaction(state: AgentState):
 async def continue_next_node(state: AgentState) -> AgentState:
     logger.info("continue_next_node")
     logger.print("node:" + "continue_next_node")
-    model = get_model().bind_tools([interact_with_role])
-    messages = [state.get("structured_scenario")]+state.get("messages",[])
-    prompt = continue_next_prompt_template.format_messages(
-        messages=messages
-    )
+    model = get_model().bind_tools([interact_with_role], parallel_tool_calls=False)
+    structured_scenario = state.get("structured_scenario")
+    messages = state.get("messages", [])
+    prompt: list[BaseMessage] = []
+    prompt.append(HumanMessage(structured_scenario))
+    prompt.extend(messages)   # 这里必须用 extend，不是 append
+    prompt.append(continue_next_prompt)
     final_text = ""
     response: Any = None
     async for chunk in model.astream(prompt):
