@@ -1,5 +1,4 @@
 import json
-from time import time as get_current_time
 from typing import Any, cast
 
 from langgraph.types import Send
@@ -14,7 +13,7 @@ from tools.interaction import ask_user_choice_impl
 from utils.ip_utils import get_country_by_ip
 from utils.logger import logger
 from utils.websocket import emit_ws_event, receive_websocket_event
-
+from datetime import datetime
 
 #登录成功节点
 async def login_success_node(state: AgentState) -> AgentState:
@@ -28,7 +27,7 @@ async def init_world_params(state: AgentState) -> AgentState:
     logger.print(f"role_node_msg:{"小哥哥"} -> {"晚安"}")
     logger.info("init_world_params")
     logger.print("node:" + "init_world_params")
-    time = get_current_time()
+    time = datetime.now().strftime("%Y-%m-%d")
     country = await get_country_by_ip()
     return {
         "world_info": {
@@ -365,7 +364,7 @@ async def continue_next_node(state: AgentState) -> AgentState:
         chunk = cast(Any, chunk)
         text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
         if text:
-            logger.print("continue_next_node:" + text, end="")
+            logger.print("continue_next_msg:" + text, end="")
             final_text += text
         if response is None:
             response = chunk

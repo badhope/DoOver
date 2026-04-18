@@ -158,7 +158,7 @@ const roleCardPill = computed(() => {
 })
 
 const continuationCardPill = computed(() => {
-  if (activeNode.value === 'continue_next_node') return 'streaming'
+  if (activeNode.value === 'continue_next_msg') return 'streaming'
   if (continuationBuffer.value.trim()) return 'ready'
   return 'idle'
 })
@@ -477,9 +477,9 @@ function handleLine(rawLine: string) {
     return
   }
 
-  if (trimmed.startsWith('continue_next_node:')) {
+  if (trimmed.startsWith('continue_next_msg:')) {
     finishNode()
-    appendContinuation(trimmed.slice('continue_next_node:'.length))
+    appendContinuation(trimmed.slice('continue_next_msg:'.length))
     return
   }
 
