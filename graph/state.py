@@ -17,3 +17,4 @@ class AgentState(TypedDict, total=False):
     final_answer: str#最终的答案
     messages: Annotated[list[BaseMessage], add_messages]#聊天消息
     roles_info:list[CharacterAgentNode]#生成的角色信息
+    continue_status:str

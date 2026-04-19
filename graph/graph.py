@@ -19,7 +19,9 @@ from graph.nodes import (
     analyze_interaction_node,
     wait_for_interaction_node,
     should_wait_for_role_interaction,
-    continue_next_node
+    continue_next_node,
+    judge_continue_node,
+    should_continue_storyline
 )
 from graph.state import AgentState
 from tools.registry import active_tools,interact_with_role
@@ -48,6 +50,7 @@ def build_guest_app():
     guest.add_edge("background_node", "agent_node")
     guest.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
     guest.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
+    guest.add_node("judge_continue_node", judge_continue_node)
     guest.add_conditional_edges(
         "agent_node",
         should_continue,
@@ -91,7 +94,7 @@ def build_guest_app():
         should_continue,
         {
             "continue": "tool_node3",
-            "end": END,
+            "end": "judge_continue_node",
         },
     )
     guest.add_conditional_edges(
@@ -101,6 +104,14 @@ def build_guest_app():
             "wait": "wait_for_interaction_from_continue",
             "continue": "continue_next_node",
         },
+    )
+    guest.add_conditional_edges(
+    "judge_continue_node",
+    should_continue_storyline,
+    {
+        "continue": "continue_next_node",
+        "end": END,
+    },
     )
     guest.add_edge("wait_for_interaction_from_continue", "continue_next_node")
     return guest.compile()
@@ -127,6 +138,7 @@ def build_auth_app():
     auth.add_node("continue_next_node", continue_next_node)
     auth.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
     auth.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
+    auth.add_node("judge_continue_node", judge_continue_node)
     auth.set_entry_point("login_success_node")
     auth.add_edge("login_success_node", "init_world_params")
 
@@ -177,7 +189,7 @@ def build_auth_app():
         should_continue,
         {
             "continue": "tool_node3",
-            "end": END,
+            "end": "judge_continue_node",
         },
     )
     auth.add_conditional_edges(
@@ -186,6 +198,14 @@ def build_auth_app():
         {
             "wait": "wait_for_interaction_from_continue",
             "continue": "continue_next_node",
+        },
+    )
+    auth.add_conditional_edges(
+        "judge_continue_node",
+        should_continue_storyline,
+        {
+            "continue": "continue_next_node",
+            "end": END,
         },
     )
     auth.add_edge("wait_for_interaction_from_continue", "continue_next_node")

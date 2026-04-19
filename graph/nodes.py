@@ -4,7 +4,7 @@ from typing import Any, cast
 from langgraph.types import Send
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage,SystemMessage
 from langchain.agents.structured_output import ToolStrategy
-from graph.prompts import background_prompt,refine_prompt,turn_prompt,create_agent_prompt,role_prompt_template,role_interaction_prompt,continue_next_prompt
+from graph.prompts import background_prompt,refine_prompt,turn_prompt,create_agent_prompt,role_prompt_template,role_interaction_prompt,continue_next_prompt,continue_judge_prompt
 from graph.state import AgentState
 from graph.pydantic_models import AlternativeActionList,RoleplayList
 from llm.service import get_model,get_nostream_model
@@ -51,10 +51,16 @@ async def intake_node(state: AgentState) -> AgentState:
 async def background_node(state: AgentState) -> dict[str, Any]:
     logger.info("background_node")
     logger.print("node:" + "background_node")
+    logger.print("background_node_msg:" + "总结背景信息中...")
     world_info = state.get("world_info", {})
     prompt_messages: list[BaseMessage] = [background_prompt]
     content = prompt_messages
-    content.append(SystemMessage(json.dumps(world_info)))
+    content.append(SystemMessage(
+        "以下是 world_info（参考结局锚点信息）。"
+        "它表示参考结局发生时的大致时间与地点，"
+        "不是当前场景，不是新分支中的既定未来，不能直接作为后续剧情事实使用。\n\n"
+        f"{json.dumps(world_info, ensure_ascii=False, indent=2)}"
+    ))
     raw_input_parts = state.get("raw_input", [])
     raw_input_text = "\n".join(raw_input_parts)
     content.append(HumanMessage(raw_input_text))
@@ -124,8 +130,14 @@ async def agent_node(state: AgentState):
     prompt.extend(recent_messages)
     if structured_scenario:
         prompt.append(HumanMessage(structured_scenario))
-    response = await model.ainvoke(prompt)
-    return {"messages": [response]}
+    try:
+        response = await model.ainvoke(prompt)
+        return {"messages": [response]}
+    except Exception as e:
+        logger.error(e)
+        return state
+
+
 
 # 判断是否继续
 def should_continue(state: AgentState):
@@ -171,9 +183,9 @@ async def turn_node(state: AgentState) -> AgentState:
     structured_scenario = state.get("structured_scenario")
     model = get_nostream_model().with_structured_output(AlternativeActionList,method="json_mode")
     prompt = []
-    prompt.append(HumanMessage(structured_scenario))
     prompt.append(turn_prompt)
     prompt.append(SystemMessage("Please output valid JSON only."))
+    prompt.append(HumanMessage(structured_scenario))
     try:
         raw_response = await model.ainvoke(prompt)
     except Exception as e:
@@ -217,10 +229,10 @@ async def create_role_node(state: AgentState) -> AgentState:
     sysmsg = create_agent_prompt
     structured_scenario = state.get("structured_scenario")
     prompt = []
-    prompt.append(HumanMessage(structured_scenario))
-    prompt.append(HumanMessage(chosen_action))
     prompt.append(sysmsg)
     prompt.append(SystemMessage("Please output valid JSON only."))
+    prompt.append(HumanMessage(structured_scenario))
+    prompt.append(HumanMessage(chosen_action))
     model = get_nostream_model().with_structured_output(RoleplayList,method="json_mode")
     try:
         raw_roles_info = await model.ainvoke(prompt)
@@ -274,7 +286,7 @@ async def role_node(state: AgentState) -> AgentState:
         else: 
             response = response + chunk
     logger.print(f"role_node_msg:{role_info.name} -> {final_text}")
-    role_outputs = role_info.name + "say:" +final_text
+    role_outputs = role_info.name + "说:" +final_text
     return {
         "messages": [AIMessage(role_outputs)]
     }
@@ -286,8 +298,8 @@ async def analyze_interaction_node(state: AgentState) -> AgentState:
     model = get_model().bind_tools([interact_with_role])
     structured_scenario = state.get("structured_scenario")
     messages: list[BaseMessage] = []
-    messages.append(HumanMessage(structured_scenario))
     messages.append(role_interaction_prompt)
+    messages.append(HumanMessage(structured_scenario))
     messages.extend(state.get("messages", []))
 
     response = await model.ainvoke(messages)
@@ -321,10 +333,12 @@ async def wait_for_interaction_node(state: AgentState) -> AgentState:
 
     event = await receive_websocket_event("interact_with_role")
     answer_field = str(event.get("field") or field)
+    target_role = str(event.get("role_name") or "")
     answer = str(event.get("answer") or "").strip()
     emit_ws_event("user_answer_received", field=answer_field, answer=answer)
+    logger.info(HumanMessage(f"用户对{target_role}说：{answer}"))
     return {
-        "messages": [HumanMessage(f"用户回答信息：{answer}")],
+        "messages": [HumanMessage(f"用户对{target_role}说：{answer}")],
     }
 
 # 判断是否等待角色和用户交互
@@ -352,10 +366,12 @@ async def continue_next_node(state: AgentState) -> AgentState:
     model = get_model().bind_tools([interact_with_role], parallel_tool_calls=False)
     structured_scenario = state.get("structured_scenario")
     messages = state.get("messages", [])
+    world_info = state.get("world_info", {})
     prompt: list[BaseMessage] = []
+    prompt.append(continue_next_prompt)
+    prompt.append(SystemMessage(json.dumps(world_info)))
     prompt.append(HumanMessage(structured_scenario))
     prompt.extend(messages)   # 这里必须用 extend，不是 append
-    prompt.append(continue_next_prompt)
     final_text = ""
     response: Any = None
     async for chunk in model.astream(prompt):
@@ -371,3 +387,48 @@ async def continue_next_node(state: AgentState) -> AgentState:
     return {"messages": [response]}
 
 
+async def judge_continue_node(state: AgentState) -> AgentState:
+    logger.info("judge_continue_node")
+    logger.print("node:" + "judge_continue_node")
+
+    model = get_nostream_model()
+    structured_scenario = state.get("structured_scenario", "")
+    messages = state.get("messages", [])
+
+    prompt: list[BaseMessage] = []
+    prompt.append(continue_judge_prompt)
+
+    if structured_scenario:
+        prompt.append(HumanMessage(structured_scenario))
+
+    prompt.extend(messages)
+
+    text = "continue"
+    try:
+        response = await model.ainvoke(prompt)
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, str):
+                text = content.strip().lower()
+            else:
+                text = str(content).strip().lower()
+        else:
+            text = str(response).strip().lower()
+    except Exception as e:
+        logger.error(e)
+        text = "continue"
+
+    if text not in {"continue", "end"}:
+        text = "continue"
+
+    logger.info(f"judge_continue_node -> {text}")
+    return {
+        "continue_status": text
+    }
+
+def should_continue_storyline(state: AgentState):
+    logger.info("should_continue_storyline")
+    logger.print("node:" + "should_continue_storyline")
+    status = state.get("continue_status", "continue")
+    logger.info(f"should_continue_storyline -> {status}")
+    return status
