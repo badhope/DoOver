@@ -128,6 +128,10 @@
           :text="nodeNameToReadable(selectedMsg)"
           :content="continueText"
         />
+        <SearchContentComponent
+          v-else-if="selectedMsg === 'search_node'"
+          :content="searchContent || '暂无搜索结果。'"
+        />
         <div v-else class="dialog-fallback">暂无可展示的消息：{{ selectedMsg }}</div>
         <button type="button" class="close-btn" @click="closeDialog">关闭</button>
       </div>
@@ -184,6 +188,7 @@ import LetterComponent from "../components/LetterComponent.vue";
 import QaNoteComponent from "../components/QaNoteComponent.vue";
 import RoleSpeechComponent from "../components/RoleSpeechComponent.vue";
 import CriticalMomentComponent from "../components/CriticalMomentComponent.vue";
+import SearchContentComponent from "../components/SearchContentComponent.vue";
 
 const dialogVisible = ref(false);
 const selectedMsg = ref(null);
@@ -213,7 +218,12 @@ const handleChoiceSubmit = (choiceText, index) => {
   choiceDialogVisible.value = false;
 };
 const isHasMsg = (msg) => {
-  if (msg === "background_node" || msg === "continue_next_node") return true;
+  if (
+    msg === "background_node" ||
+    msg === "continue_next_node" ||
+    msg === "search_node"
+  )
+    return true;
   return false;
 };
 
@@ -240,6 +250,7 @@ const nodeNameToReadable = (msg) => {
     should_continue: "继续判断节点",
     should_wait_for_user: "用户等待判断节点",
     should_wait_for_role_interaction: "角色互动等待判断节点",
+    search_node: "搜索节点",
   };
   return nodeNameMap[msg] || msg;
 };
@@ -252,6 +263,7 @@ const {
   roleMessages,
   backgroundText,
   continueText,
+  searchContent,
   sendUserInput,
   sendUserAnswer,
   sendUserChoice,

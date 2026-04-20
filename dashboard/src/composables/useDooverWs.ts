@@ -2,7 +2,9 @@
 import { onBeforeUnmount, ref } from 'vue'
 
 const WS_BASE_URL = 'ws://localhost:8000/ws'
-const TEXT_CHUNK_BOUNDARY = /(?=node:|background_node_msg:|continue_next_msg:|role_node_msg:|Baidu Search Result:|Search_Result:)/g
+const TEXT_CHUNK_BOUNDARY = /(?=node:|background_node_msg:|continue_next_msg:|role_node_msg:|Search_Result:)/g
+const SEARCH_NODE_KEY = 'search_node'
+const SEARCH_RESULT_PREFIXES = ['Search_Result:'] as const
 
 function getOrCreateSessionId() {
     return crypto.randomUUID()
@@ -21,6 +23,7 @@ export function useDooverWs() {
     const roleMessages = ref<RoleMessage[]>([])
     const backgroundText = ref('')
     const continueText = ref('')
+    const searchContent = ref('')
 
     const ws = new WebSocket(`${WS_BASE_URL}?session_id=${sessionId}`)
 
@@ -101,6 +104,42 @@ export function useDooverWs() {
         }
     }
 
+    function normalizeSearchContent(raw: string) {
+        const text = raw.trim()
+        if (!text) return ''
+
+        let value: any = text
+        for (let i = 0; i < 2; i += 1) {
+            if (typeof value !== 'string') break
+            const current = value.trim()
+            if (!current) return ''
+
+            try {
+                value = JSON.parse(current)
+            } catch {
+                value = current
+                break
+            }
+        }
+
+        if (typeof value === 'string') return value
+
+        try {
+            return JSON.stringify(value, null, 2)
+        } catch {
+            return String(value)
+        }
+    }
+
+    function appendSearchResult(content: string) {
+        if (!content.trim()) return
+        if (!searchContent.value.trim()) {
+            searchContent.value = content
+            return
+        }
+        searchContent.value = `${searchContent.value}\n\n${content}`
+    }
+
     function handleTextChunk(chunk: string) {
         if (chunk.startsWith("background_node_msg:")) {
             backgroundText.value += chunk.slice("background_node_msg:".length)
@@ -129,7 +168,11 @@ export function useDooverWs() {
             return
         }
 
-        if (chunk.startsWith("Search_Result:") || chunk.startsWith("Baidu Search Result:")) {
+        const searchPrefix = SEARCH_RESULT_PREFIXES.find((prefix) => chunk.startsWith(prefix))
+        if (searchPrefix) {
+            const content = normalizeSearchContent(chunk.slice(searchPrefix.length))
+            appendSearchResult(content)
+            nodeMessages.value.push(SEARCH_NODE_KEY)
             return
         }
 
@@ -172,6 +215,7 @@ export function useDooverWs() {
         roleMessages,
         backgroundText,
         continueText,
+        searchContent,
         send,
         sendUserInput,
         sendUserAnswer,

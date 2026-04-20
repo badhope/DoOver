@@ -132,5 +132,5 @@ async def search_from_baidu(query: str) -> str:
       return_direct=False)
 async def search_from_tavily(query: str,tavily_api_key)->str:
     result =  await tavily_web_search(query,tavily_api_key)
-    logger.info(f"Search_Result: {json.dumps(result, ensure_ascii=False)}")
+    logger.print(f"Search_Result: {json.dumps(result, ensure_ascii=False)}")
     return json.dumps(result, ensure_ascii=False)
