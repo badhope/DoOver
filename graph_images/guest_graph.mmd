@@ -1,0 +1,53 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	init_world_params(init_world_params)
+	intake_node(intake_node)
+	background_node(background_node)
+	tool_node(tool_node)
+	wait_user_node(wait_user_node)
+	agent_node(agent_node)
+	turn_node(turn_node)
+	user_choice_node(user_choice_node)
+	role_node(role_node)
+	create_role_node(create_role_node)
+	analyze_interaction_node(analyze_interaction_node)
+	tool_node2(tool_node2)
+	wait_for_interaction_from_analyze(wait_for_interaction_from_analyze)
+	continue_next_node(continue_next_node)
+	tool_node3(tool_node3)
+	wait_for_interaction_from_continue(wait_for_interaction_from_continue)
+	judge_continue_node(judge_continue_node)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> init_world_params;
+	agent_node -. &nbsp;continue&nbsp; .-> tool_node;
+	agent_node -. &nbsp;end&nbsp; .-> turn_node;
+	analyze_interaction_node -. &nbsp;end&nbsp; .-> continue_next_node;
+	analyze_interaction_node -. &nbsp;continue&nbsp; .-> tool_node2;
+	background_node --> agent_node;
+	continue_next_node -. &nbsp;end&nbsp; .-> judge_continue_node;
+	continue_next_node -. &nbsp;continue&nbsp; .-> tool_node3;
+	create_role_node -.-> role_node;
+	init_world_params --> intake_node;
+	intake_node --> background_node;
+	judge_continue_node -. &nbsp;end&nbsp; .-> __end__;
+	judge_continue_node -. &nbsp;continue&nbsp; .-> continue_next_node;
+	role_node --> analyze_interaction_node;
+	tool_node -. &nbsp;continue&nbsp; .-> background_node;
+	tool_node -. &nbsp;wait&nbsp; .-> wait_user_node;
+	tool_node2 -. &nbsp;continue&nbsp; .-> analyze_interaction_node;
+	tool_node2 -. &nbsp;wait&nbsp; .-> wait_for_interaction_from_analyze;
+	tool_node3 -. &nbsp;continue&nbsp; .-> continue_next_node;
+	tool_node3 -. &nbsp;wait&nbsp; .-> wait_for_interaction_from_continue;
+	turn_node --> user_choice_node;
+	user_choice_node --> create_role_node;
+	wait_for_interaction_from_analyze --> analyze_interaction_node;
+	wait_for_interaction_from_continue --> continue_next_node;
+	wait_user_node --> background_node;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
