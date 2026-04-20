@@ -11,12 +11,10 @@
     </svg>
 
     <div class="archive-card">
-      <!-- 文件夹标签条 -->
       <div class="tab-label">
         <span>{{ category }}</span>
       </div>
 
-      <!-- 回形针 / 成功勾 -->
       <div class="clip-badge">
         <svg v-if="status !== 'success'" viewBox="0 0 28 28" class="clip-svg">
           <path
@@ -40,31 +38,40 @@
       </div>
 
       <div class="card-inner">
-        <!-- 档案编号 -->
         <div class="file-ref">{{ meta }}</div>
-
-        <!-- 问题标题 -->
         <div class="card-heading">{{ title }}</div>
-
-        <!-- 补充说明 -->
         <div class="card-hint">{{ question }}</div>
 
-        <!-- 填写区域 -->
         <div class="field-section" v-if="status !== 'success'">
+          <div class="guide-row">
+            <span class="guide-chip">时间地点人物</span>
+            <span class="guide-chip">关键冲突与行动</span>
+            <span class="guide-chip">结果与反思</span>
+          </div>
+
           <div class="field-wrap" :class="{ focused: isFocused }">
             <span class="field-arrow">▸</span>
             <textarea
               class="field-input"
               v-model="answer"
-              :disabled="status === 'loading'"
+              :disabled="status === 'loading' || disabled"
               :placeholder="placeholder"
               @focus="isFocused = true"
               @blur="isFocused = false"
             />
           </div>
+
+          <div class="progress-head" :class="{ reached: isRecommendationReached }">
+            <span class="progress-tip">{{ progressTip }}</span>
+            <span class="progress-count">{{ characterCount }} / {{ RECOMMENDED_CHAR_COUNT }}</span>
+          </div>
+          <div class="progress-track">
+            <span class="progress-fill" :style="{ width: progressWidth }"></span>
+          </div>
+
           <button
             class="archive-btn"
-            :disabled="!answer.trim() || status === 'loading'"
+            :disabled="disabled || !answer.trim() || status === 'loading'"
             @click="handleSubmit"
           >
             <span v-if="status === 'loading'" class="anim-dots">
@@ -72,9 +79,9 @@
             </span>
             <span v-else>归档</span>
           </button>
+          <div v-if="disabled" class="connect-tip">WS 未连接，暂不可输入</div>
         </div>
 
-        <!-- 已归档展示 -->
         <div class="done-section" v-else>
           <div class="done-row">
             <span class="done-arrow">▸</span>
@@ -84,24 +91,41 @@
         </div>
       </div>
 
-      <!-- 折角 -->
       <div class="fold"></div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
+
+const RECOMMENDED_CHAR_COUNT = 1800;
 
 const props = defineProps({
-  meta: { type: String, default: "#EXP-007 PERSONAL-FILE" },
-  category: { type: String, default: "工作经历" },
-  title: { type: String, default: "请描述您最难忘的一段工作经历" },
+  meta: {
+    type: String,
+    default: "#EXP-007",
+  },
+  category: {
+    type: String,
+    default: "经历",
+  },
+  title: {
+    type: String,
+    default: "一个塑造了你的瞬间",
+  },
   question: {
     type: String,
-    default: "包括时间、地点、角色以及您从中获得的核心收获。",
+    default: "故事自己会找到结构，只要开始写下第一个真实的画面。",
   },
-  placeholder: { type: String, default: "简要记录这段经历..." },
+  placeholder: {
+    type: String,
+    default: "试着描述：\n• 当时空气是什么味道？\n• 你做了一个什么决定？\n• 现在的你会对当时的自己说什么？",
+  },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["submit"]);
@@ -111,8 +135,39 @@ const status = ref("idle");
 const isFocused = ref(false);
 let submitTimer = null;
 
+const characterCount = computed(() => Array.from(answer.value.trim()).length);
+
+const progressWidth = computed(() => {
+  const ratio = Math.min(1, characterCount.value / RECOMMENDED_CHAR_COUNT);
+  return `${Math.round(ratio * 100)}%`;
+});
+
+const isRecommendationReached = computed(
+  () => characterCount.value >= RECOMMENDED_CHAR_COUNT
+);
+
+const progressTip = computed(() => {
+  const count = characterCount.value;
+
+  if (count === 0) {
+    return "先写第一句场景描述，开始后会更容易继续写。";
+  }
+
+  if (count < 80) {
+    return "很好，继续补充一个细节或对话，内容会更真实。";
+  }
+
+  if (count < RECOMMENDED_CHAR_COUNT) {
+    return "已经很完整，再补一段“你的思考变化”会更有价值。";
+  }
+
+  return "信息非常完整，可以直接归档。";
+});
+
 const handleSubmit = () => {
+  if (props.disabled) return;
   if (!answer.value.trim() || status.value !== "idle") return;
+
   status.value = "loading";
   submitTimer = setTimeout(() => {
     submitTimer = null;
@@ -131,44 +186,40 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .archive-desk {
-  padding: 24px 20px 20px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: fit-content;
+  width: min(860px, 95vw);
 }
 
-/* ====== 档案卡片主体 ====== */
 .archive-card {
   position: relative;
   background: #fdfdf8;
-  width: 388px;
-  min-height: 310px;
-  border-radius: 6px;
-  padding: 38px 28px 28px;
+  width: min(820px, 95vw);
+  min-height: 600px;
+  border-radius: 8px;
+  padding: 52px 44px 40px;
   box-shadow:
     0 1px 2px rgba(60, 48, 30, 0.04),
-    0 4px 14px -2px rgba(60, 48, 30, 0.09),
+    0 6px 18px -2px rgba(60, 48, 30, 0.1),
     inset 0 0 0 1px rgba(60, 48, 30, 0.05);
-  transform: rotate(0.4deg);
 }
 
-/* ====== 顶部标签条 ====== */
 .tab-label {
   position: absolute;
   top: -14px;
-  left: 28px;
+  left: 32px;
   background: #c4956a;
   color: #faf6ee;
-  padding: 5px 18px;
+  padding: 7px 20px;
   border-radius: 4px 4px 0 0;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 2.5px;
+  letter-spacing: 2.2px;
   box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06);
 }
 
-/* 标签左下小折痕 */
 .tab-label::after {
   content: "";
   position: absolute;
@@ -179,29 +230,26 @@ onBeforeUnmount(() => {
   border-color: transparent #a87d55 transparent transparent;
 }
 
-/* ====== 回形针角标 ====== */
 .clip-badge {
   position: absolute;
-  top: 22px;
-  right: 22px;
-  width: 28px;
-  height: 28px;
+  top: 26px;
+  right: 28px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.55);
-  border-radius: 5px;
+  border-radius: 6px;
   border: 1px solid rgba(60, 48, 30, 0.06);
-  transition: border-color 0.3s;
 }
 
 .clip-svg {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   display: block;
 }
 
-/* ====== 内容区 ====== */
 .card-inner {
   position: relative;
   display: flex;
@@ -210,48 +258,66 @@ onBeforeUnmount(() => {
 
 .file-ref {
   font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
-  font-size: 9.5px;
+  font-size: 11px;
   color: #b8ad9c;
-  letter-spacing: 1px;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  letter-spacing: 1.1px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
   border-bottom: 1px solid rgba(60, 48, 30, 0.06);
 }
 
 .card-heading {
-  font-size: 15px;
+  font-size: 24px;
   font-weight: 600;
   color: #3d3529;
-  line-height: 1.55;
+  line-height: 1.5;
   font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
-  margin-bottom: 6px;
-  padding-right: 40px;
+  margin-bottom: 10px;
+  padding-right: 56px;
 }
 
 .card-hint {
-  font-size: 13px;
+  font-size: 16px;
   color: #8a7e6d;
   line-height: 1.65;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* ====== 输入行 ====== */
 .field-section {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guide-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.guide-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px dashed rgba(108, 93, 70, 0.35);
+  color: #6f6254;
+  background: rgba(255, 255, 255, 0.52);
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 
 .field-wrap {
   flex: 1;
   display: flex;
   align-items: flex-start;
-  border: 1.5px solid #d5ccba;
-  border-radius: 4px;
-  padding: 8px 10px;
+  border: 2px solid #d5ccba;
+  border-radius: 6px;
+  padding: 12px 14px;
   transition: border-color 0.25s ease, box-shadow 0.15s ease;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .field-wrap.focused {
@@ -260,9 +326,9 @@ onBeforeUnmount(() => {
 }
 
 .field-arrow {
-  font-size: 14px;
+  font-size: 16px;
   color: #c4b9a8;
-  margin-right: 7px;
+  margin-right: 8px;
   margin-top: 2px;
   flex-shrink: 0;
   user-select: none;
@@ -275,35 +341,86 @@ onBeforeUnmount(() => {
 
 .field-input {
   flex: 1;
-  min-height: 72px;
-  max-height: 180px;
+  min-height: 280px;
+  max-height: 460px;
   resize: vertical;
   background: transparent;
   border: none;
   padding: 0;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.8;
   color: #3d3529;
+  caret-color: #9b8f7e;
   font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
   outline: none;
 }
 
-.field-input::placeholder {
-  color: #cdc3b2;
-  font-style: italic;
-  font-size: 13px;
+.field-wrap.focused .field-input {
+  caret-color: #7b6b56;
 }
 
-/* ====== 归档按钮 ====== */
+.field-input::placeholder {
+  color: #b7aa97;
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #877864;
+}
+
+.progress-tip {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.progress-count {
+  font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: #9b8f7e;
+  white-space: nowrap;
+}
+
+.progress-head.reached {
+  color: #507258;
+}
+
+.progress-head.reached .progress-count {
+  color: #507258;
+}
+
+.progress-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid rgba(111, 98, 84, 0.28);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #7b6b56;
+  transition: width 0.28s ease;
+}
+
 .archive-btn {
+  align-self: flex-end;
   background: transparent;
   color: #3d3529;
   border: 1.5px solid #3d3529;
-  padding: 6px 18px;
-  font-size: 12px;
+  padding: 9px 22px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 2px;
-  border-radius: 4px;
+  letter-spacing: 1.8px;
+  border-radius: 6px;
   cursor: pointer;
   font-family: system-ui, sans-serif;
   transition: all 0.2s;
@@ -317,7 +434,7 @@ onBeforeUnmount(() => {
 }
 
 .archive-btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 .archive-btn:disabled {
@@ -326,7 +443,13 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* ====== 加载弹跳圆点 ====== */
+.connect-tip {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9b8f7e;
+  line-height: 1.4;
+}
+
 .anim-dots {
   display: inline-flex;
   gap: 4px;
@@ -364,7 +487,6 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ====== 已归档状态 ====== */
 .done-section {
   position: relative;
   padding-top: 4px;
@@ -373,38 +495,37 @@ onBeforeUnmount(() => {
 .done-row {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 8px;
   border-bottom: 2px solid #5a7a5e;
-  padding-bottom: 3px;
+  padding-bottom: 4px;
   width: fit-content;
   max-width: 100%;
 }
 
 .done-arrow {
   color: #5a7a5e;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   flex-shrink: 0;
 }
 
 .done-value {
-  font-size: 14px;
+  font-size: 16px;
   color: #3d3529;
   font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
   font-weight: 500;
   word-break: break-all;
 }
 
-/* ====== 印章 ====== */
 .stamp {
   position: absolute;
   right: 0;
   bottom: -8px;
   border: 2px solid rgba(90, 122, 94, 0.45);
   color: rgba(90, 122, 94, 0.5);
-  padding: 3px 14px;
+  padding: 4px 16px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 4px;
   transform: rotate(-10deg);
@@ -427,16 +548,61 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ====== 右下折角 ====== */
 .fold {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   background: linear-gradient(135deg, #faf6ee 50%, #e2dbd0 50%);
-  border-radius: 0 0 6px 0;
+  border-radius: 0 0 8px 0;
   box-shadow: -1px -1px 3px rgba(60, 48, 30, 0.04);
   z-index: 5;
+}
+
+@media (max-width: 900px) {
+  .archive-desk {
+    width: min(94vw, 760px);
+    padding: 20px 12px 16px;
+  }
+
+  .archive-card {
+    width: min(94vw, 760px);
+    min-height: 540px;
+    padding: 42px 24px 26px;
+  }
+
+  .card-heading {
+    font-size: 22px;
+  }
+
+  .field-input {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 640px) {
+  .tab-label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+  }
+
+  .card-heading {
+    font-size: 19px;
+    line-height: 1.45;
+  }
+
+  .card-hint {
+    font-size: 14px;
+  }
+
+  .field-input {
+    min-height: 190px;
+    font-size: 15px;
+  }
+
+  .archive-btn {
+    align-self: stretch;
+  }
 }
 </style>

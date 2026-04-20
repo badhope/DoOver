@@ -12,11 +12,8 @@
 
     <div class="note-wrap">
       <div class="note-paper">
-        <!-- 横线纹理 -->
         <div class="ruled-lines"></div>
-        <!-- 红色页边线 -->
         <div class="margin-line"></div>
-        <!-- 右下折角 -->
         <div class="dog-ear"></div>
 
         <div class="note-body">
@@ -51,7 +48,6 @@
 
             <div class="desc">{{ question }}</div>
 
-            <!-- 输入区域 -->
             <div class="qa-action-row" v-if="status !== 'success'">
               <div class="input-group">
                 <span class="input-label">A:</span>
@@ -59,14 +55,14 @@
                   type="text"
                   class="pencil-input"
                   v-model="answer"
-                  :disabled="status === 'loading'"
+                  :disabled="status === 'loading' || disabled"
                   :placeholder="placeholder"
                   @keyup.enter="handleSubmit"
                 />
               </div>
               <button
                 class="submit-btn"
-                :disabled="!answer.trim() || status === 'loading'"
+                :disabled="disabled || !answer.trim() || status === 'loading'"
                 @click="handleSubmit"
               >
                 <span v-if="status === 'loading'" class="anim-dots">
@@ -75,9 +71,9 @@
                 <span v-else>回答</span>
               </button>
             </div>
+            <div v-if="disabled && status !== 'success'" class="connect-tip">WS 未连接，暂不可输入</div>
 
-            <!-- 成功展示 -->
-            <div class="success-feedback" v-else>
+            <div class="success-feedback" v-if="status === 'success'">
               <div class="answer-row">
                 <span class="answer-label">A:</span>
                 <span class="answer-text">{{ answer }}</span>
@@ -98,9 +94,10 @@ const props = defineProps({
   role: { type: String, default: "请补充更多信息" },
   question: {
     type: String,
-    default: "请仔细阅读上方代码片段，并在虚线上写下您的判断。",
+    default: "请仔细阅读上方片段，并在下方填写你的答案。",
   },
   placeholder: { type: String, default: "在此输入答案..." },
+  disabled: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["submit"]);
@@ -110,7 +107,9 @@ const status = ref("idle");
 let submitTimer = null;
 
 const handleSubmit = () => {
+  if (props.disabled) return;
   if (!answer.value.trim() || status.value !== "idle") return;
+
   status.value = "loading";
   submitTimer = setTimeout(() => {
     submitTimer = null;
@@ -143,7 +142,6 @@ onBeforeUnmount(() => {
   height: 0;
 }
 
-/* ================= 卡片容器 ================= */
 .note-wrap {
   position: relative;
   display: inline-block;
@@ -164,7 +162,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* ================= 横线 ================= */
 .ruled-lines {
   position: absolute;
   inset: 0;
@@ -177,23 +174,10 @@ onBeforeUnmount(() => {
     #d4d8cc 28px
   );
   opacity: 0.4;
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 12%,
-    black 85%,
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 12%,
-    black 85%,
-    transparent 100%
-  );
+  mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 85%, transparent 100%);
 }
 
-/* ================= 红色页边线 ================= */
 .margin-line {
   position: absolute;
   left: 40px;
@@ -205,7 +189,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* ================= 折角 ================= */
 .dog-ear {
   position: absolute;
   right: 0;
@@ -217,11 +200,6 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
-.note-paper.is-msg .dog-ear {
-  background: linear-gradient(135deg, #f2faf5 50%, #d8e8dd 50%);
-}
-
-/* ================= 内容布局 ================= */
 .note-body {
   position: relative;
   z-index: 2;
@@ -249,7 +227,6 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 
-/* ================= 铅笔图标 ================= */
 .status-badge {
   width: 26px;
   height: 26px;
@@ -286,7 +263,6 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* ================= 输入区域 ================= */
 .qa-action-row {
   display: flex;
   align-items: center;
@@ -365,7 +341,12 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* ================= 加载弹跳圆点 ================= */
+.connect-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9f9382;
+}
+
 .anim-dots {
   display: inline-flex;
   gap: 4px;
@@ -403,7 +384,6 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ================= 成功状态 ================= */
 .success-feedback {
   padding-top: 4px;
 }
