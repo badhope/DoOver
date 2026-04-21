@@ -4,6 +4,7 @@ from contextlib import suppress
 from functools import partial
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from fastapi import (
@@ -49,6 +50,16 @@ APPS = {
 }
 DEFAULT_APP_KEY = "guest"
 _session_workers: dict[str, asyncio.Task[None]] = {}
+DEFAULT_USER_NAME = "doover"
+DEFAULT_USER_PASSWORD = "doover"
+FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
 
 class LoginBody(BaseModel):
@@ -96,6 +107,18 @@ def _parse_incoming_message(message: str) -> object:
         return json.loads(message)
     except json.JSONDecodeError:
         return {"type": "text", "text": message}
+
+
+def _extract_request_token(request: Request) -> str | None:
+    return request.cookies.get(AUTH_COOKIE_KEY)
+
+
+def _is_default_user_conf() -> bool:
+    conf = load_user_conf()
+    return (
+        str(conf.get("user_name") or "").strip() == DEFAULT_USER_NAME
+        and str(conf.get("user_key") or "").strip() == DEFAULT_USER_PASSWORD
+    )
 
 
 async def _forward_messages_to_fastapi_websocket(
@@ -237,7 +260,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="DoOver Graph Router", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -247,6 +270,20 @@ app.add_middleware(
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"ok": "true"}
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request) -> dict[str, Any]:
+    token = _extract_request_token(request)
+    user_name = await resolve_user_from_token(token)
+    if not user_name:
+        raise HTTPException(status_code=401, detail="not logged in")
+
+    return {
+        "ok": True,
+        "user_name": user_name,
+        "require_password_change": _is_default_user_conf(),
+    }
 
 
 @app.websocket("/ws/{app_key}")
@@ -316,7 +353,7 @@ async def ws_default(
 
 
 @app.post("/login")
-async def login(body: LoginBody, response: Response) -> dict[str, bool]:
+async def login(body: LoginBody, response: Response) -> dict[str, Any]:
     conf = load_user_conf()
     expected_user = conf["user_name"]
     expected_key = conf["user_key"]
@@ -334,21 +371,23 @@ async def login(body: LoginBody, response: Response) -> dict[str, bool]:
         secure=False,
         path="/",
     )
-    return {"ok": True}
+    return {
+        "ok": True,
+        "user_name": expected_user,
+        "require_password_change": _is_default_user_conf(),
+    }
 
 
 @app.post("/logout")
 async def logout(request: Request, response: Response) -> dict[str, bool]:
-    await revoke_token(request.cookies.get(AUTH_COOKIE_KEY))
+    await revoke_token(_extract_request_token(request))
     response.delete_cookie(key=AUTH_COOKIE_KEY, path="/")
     return {"ok": True}
 
 #修改用户名密码
 @app.put("/update_user")
 async def update_user(request: Request, user: LoginBody) -> dict[str, bool]:
-    token = request.cookies.get(AUTH_COOKIE_KEY)
-    if not token or not resolve_user_from_token(token):
-        raise HTTPException(status_code=401, detail="未登录")
+    token = await _require_login_token(request)
     try:
         await update_username_and_password(token, user.username, user.password)
     except Exception as e:
@@ -360,10 +399,7 @@ PROVIDER_CONFIG_PATH = Path("llm/config/provider.json")
 #更换llm_model
 @app.put("/update_llm")
 async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, str]:
-    token = request.cookies.get(AUTH_COOKIE_KEY)
-    user_name = await resolve_user_from_token(token) if token else None
-    if not user_name:
-        raise HTTPException(status_code=401, detail="not logged in")
+    await _require_login_token(request)
 
     provider = payload.provider.strip()
     if not provider:
@@ -396,10 +432,39 @@ async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, st
 
 
 async def _require_login_token(request: Request) -> str:
-    token = request.cookies.get(AUTH_COOKIE_KEY)
+    token = _extract_request_token(request)
     if not token or not await resolve_user_from_token(token):
         raise HTTPException(status_code=401, detail="not logged in")
     return token
+
+
+@app.get("/llm_config")
+async def llm_config(request: Request) -> dict[str, Any]:
+    await _require_login_token(request)
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict):
+        raise HTTPException(status_code=500, detail="invalid provider config")
+
+    safe_providers: dict[str, dict[str, Any]] = {}
+    for provider_name, provider_conf in providers.items():
+        if not isinstance(provider_name, str):
+            continue
+        conf = provider_conf if isinstance(provider_conf, dict) else {}
+        models = conf.get("models")
+        safe_models = [str(m) for m in models] if isinstance(models, list) else []
+        safe_providers[provider_name] = {
+            "type": str(conf.get("type") or "openai"),
+            "base_url": str(conf.get("base_url") or ""),
+            "models": safe_models,
+        }
+
+    return {
+        "active_provider": str(data.get("active_llm_provider") or ""),
+        "active_model": str(data.get("active_llm_model") or ""),
+        "providers": safe_providers,
+    }
 
 
 @app.put("/add_llm_provider")

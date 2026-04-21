@@ -5,7 +5,7 @@
     <div class="error-scroll">
       <div class="error-head">
         <span class="error-dot">!</span>
-        <h3 class="error-title">节点执行失败</h3>
+        <h3 class="error-title">{{ title }}</h3>
       </div>
 
       <div class="error-meta">#ERR-NODE-ALERT</div>
@@ -33,6 +33,7 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 
 const props = defineProps({
+  title: { type: String, default: "节点执行失败" },
   node: { type: String, default: "未知节点" },
   message: { type: String, default: "系统返回了未知错误，请稍后重试。" },
 });
