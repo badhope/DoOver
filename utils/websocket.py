@@ -174,6 +174,13 @@ def unsubscribe_session(
         return
     session.subscribers.discard(queue)
 
+def get_session_subscriber_count(session_id: str | None = None) -> int:
+    """返回某个 session 当前在线订阅者数量。"""
+    session = _sessions.get(normalize_session_id(session_id))
+    if session is None:
+        return 0
+    return len(session.subscribers)
+
 
 async def iter_session_messages(
     session_id: str | None = None,
@@ -466,5 +473,6 @@ __all__ = [
     "start_websocket_server",
     "stop_websocket_server",
     "subscribe_session",
+    "get_session_subscriber_count",
     "unsubscribe_session",
 ]

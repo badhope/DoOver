@@ -6,7 +6,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -14,8 +22,10 @@ from graph.graph import build_auth_app, build_guest_app
 from graph.state import AgentState
 from user.update_name_pswd import update_username_and_password
 from utils.load_config import load_json_config, save_json_config
+from utils.logger import logger
 from utils.websocket import (
     create_session,
+    get_session_subscriber_count,
     get_session_meta,
     push_client_message,
     receive_session_event,
@@ -102,6 +112,7 @@ async def _forward_messages_to_fastapi_websocket(
 
 async def run_session(session_id: str) -> None:
     token = set_current_session(session_id)
+    logger.info(f"session worker started: session_id={session_id}")
     try:
         while True:
             event = await receive_session_event("user_input", session_id=session_id)
@@ -113,11 +124,24 @@ async def run_session(session_id: str) -> None:
                 get_session_meta(session_id, "app_key", DEFAULT_APP_KEY)
             ).strip().lower()
             graph_app = APPS.get(app_key, APPS[DEFAULT_APP_KEY])
+            logger.info(
+                f"session worker handling user_input: session_id={session_id}, app={app_key}"
+            )
             state: AgentState = {"raw_input": [text]}
             async for _ in graph_app.astream(state, stream_mode="values"):
                 pass
+            logger.info(
+                f"session worker finished graph run: session_id={session_id}, app={app_key}"
+            )
+    except asyncio.CancelledError:
+        logger.info(f"session worker cancelled: session_id={session_id}")
+        raise
+    except Exception:
+        logger.exception(f"session worker crashed: session_id={session_id}")
+        raise
     finally:
         reset_current_session(token)
+        logger.info(f"session worker stopped: session_id={session_id}")
 
 
 def _on_session_worker_done(session_id: str, task: asyncio.Task[None]) -> None:
@@ -125,8 +149,15 @@ def _on_session_worker_done(session_id: str, task: asyncio.Task[None]) -> None:
     if current is task:
         _session_workers.pop(session_id, None)
 
-    with suppress(asyncio.CancelledError):
-        task.exception()
+    if task.cancelled():
+        logger.info(f"session worker done(cancelled): session_id={session_id}")
+        return
+
+    exc = task.exception()
+    if exc is None:
+        logger.info(f"session worker done(clean): session_id={session_id}")
+    else:
+        logger.error(f"session worker done(error): session_id={session_id}, error={exc}")
 
 
 def ensure_session_worker(session_id: str, app_key: str) -> asyncio.Task[None]:
@@ -143,6 +174,9 @@ def ensure_session_worker(session_id: str, app_key: str) -> asyncio.Task[None]:
 
     existing = _session_workers.get(normalized_session)
     if existing is not None and not existing.done():
+        logger.info(
+            f"session worker reuse: session_id={normalized_session}, app={normalized_app}"
+        )
         return existing
 
     worker = asyncio.create_task(
@@ -151,6 +185,9 @@ def ensure_session_worker(session_id: str, app_key: str) -> asyncio.Task[None]:
     )
     worker.add_done_callback(partial(_on_session_worker_done, normalized_session))
     _session_workers[normalized_session] = worker
+    logger.info(
+        f"session worker created: session_id={normalized_session}, app={normalized_app}"
+    )
     return worker
 
 
@@ -164,6 +201,29 @@ async def stop_session_workers() -> None:
             await task
 
     _session_workers.clear()
+
+async def cancel_session_worker_if_no_subscribers(session_id: str) -> None:
+    subscribers = get_session_subscriber_count(session_id)
+    if subscribers > 0:
+        logger.info(
+            f"skip cancel session worker: session_id={session_id}, subscribers={subscribers}"
+        )
+        return
+
+    worker = _session_workers.get(session_id)
+    if worker is None:
+        logger.info(f"skip cancel session worker: session_id={session_id}, reason=no_worker")
+        return
+
+    if worker.done():
+        logger.info(f"skip cancel session worker: session_id={session_id}, reason=already_done")
+        return
+
+    logger.info(f"cancel session worker: session_id={session_id}, subscribers=0")
+    worker.cancel()
+    with suppress(asyncio.CancelledError):
+        await worker
+    logger.info(f"cancel session worker completed: session_id={session_id}")
 
 
 @asynccontextmanager
@@ -199,12 +259,16 @@ async def ws_by_app(
     try:
         normalized_app = _normalize_app_key(app_key)
         normalized_session = create_session(session_id)
+        logger.info(
+            f"ws connected: session_id={normalized_session}, app={normalized_app}"
+        )
         if normalized_app == "auth":
             user_name = await resolve_user_from_token(ws.cookies.get(AUTH_COOKIE_KEY))
             if not user_name:
                 raise ValueError("auth websocket requires login")
         ensure_session_worker(normalized_session, normalized_app)
     except (RuntimeError, ValueError) as exc:
+        logger.warning(f"ws rejected: app={app_key}, session_id={session_id}, error={exc}")
         await ws.close(code=1008, reason=str(exc))
         return
 
@@ -217,13 +281,28 @@ async def ws_by_app(
             message = await ws.receive_text()
             parsed = _parse_incoming_message(message)
             await push_client_message(parsed, session_id=normalized_session)
+    except WebSocketDisconnect as exc:
+        logger.info(
+            f"ws disconnected: session_id={normalized_session}, app={normalized_app}, code={exc.code}"
+        )
+        return
     except Exception:
+        logger.exception(
+            f"ws receive loop failed: session_id={normalized_session}, app={normalized_app}"
+        )
         return
     finally:
+        logger.info(
+            f"ws cleanup begin: session_id={normalized_session}, app={normalized_app}"
+        )
         forward_task.cancel()
         with suppress(asyncio.CancelledError):
             await forward_task
         unsubscribe_session(outbound_queue, session_id=normalized_session)
+        await cancel_session_worker_if_no_subscribers(normalized_session)
+        logger.info(
+            f"ws cleanup end: session_id={normalized_session}, app={normalized_app}"
+        )
 
 
 @app.websocket("/ws")
