@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 
 const WS_BASE_URL = 'ws://localhost:8000/ws'
+const RECONNECT_INTERVAL_MS = 3000
 const TEXT_CHUNK_BOUNDARY = /(?=node:|background_node_msg:|continue_next_msg:|role_node_msg:|Search_Result:)/g
 const SEARCH_NODE_KEY = 'search_node'
 const SEARCH_RESULT_PREFIXES = ['Search_Result:'] as const
@@ -25,14 +26,28 @@ export function useDooverWs() {
     const continueText = ref('')
     const searchContent = ref('')
 
-    const ws = new WebSocket(`${WS_BASE_URL}?session_id=${sessionId}`)
+    let ws: WebSocket | null = null
+    let reconnectTimer: number | null = null
+    let allowReconnect = true
 
-    ws.onopen = () => (isConnected.value = true)
-    ws.onclose = () => (isConnected.value = false)
-    ws.onerror = () => (isConnected.value = false)
+    function clearReconnectTimer() {
+        if (reconnectTimer !== null) {
+            window.clearTimeout(reconnectTimer)
+            reconnectTimer = null
+        }
+    }
+
+    function scheduleReconnect() {
+        if (!allowReconnect || reconnectTimer !== null) return
+        reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null
+            if (!allowReconnect) return
+            connect()
+        }, RECONNECT_INTERVAL_MS)
+    }
 
     function send(payload: any) {
-        if (ws.readyState !== WebSocket.OPEN) return
+        if (!ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify(payload))
     }
 
@@ -181,27 +196,64 @@ export function useDooverWs() {
         }
     }
 
-    ws.onmessage = (event) => {
-        const raw = String(event.data || "")
+    function connect() {
+        if (!allowReconnect) return
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+            return
+        }
 
-        try {
-            const msg = JSON.parse(raw)
-            if (msg && typeof msg === "object" && handleStructuredEvent(msg)) return
-        } catch { }
+        const socket = new WebSocket(`${WS_BASE_URL}?session_id=${sessionId}`)
+        ws = socket
 
-        const chunks = raw.replace(/\r/g, "").split(TEXT_CHUNK_BOUNDARY)
-        for (const chunk of chunks) {
-            if (!chunk) continue
-            handleTextChunk(chunk)
+        socket.onopen = () => {
+            isConnected.value = true
+            clearReconnectTimer()
+        }
+
+        socket.onclose = () => {
+            if (ws === socket) ws = null
+            isConnected.value = false
+            scheduleReconnect()
+        }
+
+        socket.onerror = () => {
+            isConnected.value = false
+            if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+                socket.close()
+            } else {
+                scheduleReconnect()
+            }
+        }
+
+        socket.onmessage = (event) => {
+            const raw = String(event.data || "")
+
+            try {
+                const msg = JSON.parse(raw)
+                if (msg && typeof msg === "object" && handleStructuredEvent(msg)) return
+            } catch { }
+
+            const chunks = raw.replace(/\r/g, "").split(TEXT_CHUNK_BOUNDARY)
+            for (const chunk of chunks) {
+                if (!chunk) continue
+                handleTextChunk(chunk)
+            }
         }
     }
 
+    connect()
+
     onBeforeUnmount(() => {
+        allowReconnect = false
+        clearReconnectTimer()
+        if (!ws) return
         ws.onopen = null
         ws.onclose = null
         ws.onerror = null
         ws.onmessage = null
         ws.close()
+        ws = null
+        isConnected.value = false
     })
 
     return {
