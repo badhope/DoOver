@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from graph.graph import build_auth_app, build_guest_app
 from graph.state import AgentState
+from llm.config.provider import get_config_list
 from user.update_name_pswd import update_username_and_password
 from utils.load_config import load_json_config, save_json_config
 from utils.logger import logger
@@ -548,6 +549,15 @@ async def llm_config(request: Request) -> dict[str, Any]:
         "active_provider": str(data.get("active_llm_provider") or ""),
         "active_model": str(data.get("active_llm_model") or ""),
         "providers": safe_providers,
+    }
+
+
+@app.get("/llm_provider_types")
+async def llm_provider_types(request: Request) -> dict[str, Any]:
+    await _require_login_token(request)
+
+    return {
+        "items": [item.to_dict() for item in get_config_list()],
     }
 
 

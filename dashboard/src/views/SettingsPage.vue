@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="settings-page">
     <div class="page-shell">
       <aside class="sidebar">
@@ -155,136 +155,191 @@
               </div>
             </div>
 
-            <div v-else-if="currentSection === 'llm-providers'" key="llm-providers" class="panel">
-              <div class="card">
-                <div class="provider-console">
-                  <aside class="provider-rail">
-                    <div class="provider-rail-head">
-                      <span class="field-label">Providers</span>
-                      <button
-                        type="button"
-                        class="provider-add-btn"
-                        @click="toggleNewProviderTypePicker"
-                      >
-                        + 新增
-                      </button>
-                    </div>
+            <div v-else-if="currentSection === 'llm-providers'" key="llm-providers" class="panel provider-page">
+              <aside class="provider-list-card">
+                <div class="provider-list-card-head">
+                  <div class="provider-list-card-title-wrap">
+                    <h3 class="provider-list-card-title">提供商源</h3>
+                    <span class="provider-list-count">{{ providerNames.length }}</span>
+                  </div>
+                  <div class="provider-add-menu" :class="{ open: showNewProviderTypePicker }">
+                    <button
+                      type="button"
+                      class="provider-add-btn"
+                      :disabled="!providerTypeOptions.length"
+                      :aria-expanded="showNewProviderTypePicker"
+                      @click.stop="toggleNewProviderTypePicker"
+                    >
+                      <span class="provider-add-plus" aria-hidden="true">+</span>
+                      <span>新增</span>
+                      <span class="provider-add-caret" aria-hidden="true"></span>
+                    </button>
 
-                    <div v-if="showNewProviderTypePicker" class="provider-type-panel">
-                      <span class="provider-type-title">选择 Provider 类型</span>
-                      <button
-                        v-for="option in providerTypeOptions"
-                        :key="option.value"
-                        type="button"
-                        class="provider-type-option"
-                        @click="startCreateProvider(option.value)"
-                      >
-                        {{ option.label }}
-                      </button>
-                    </div>
-
-                    <div class="provider-list">
-                      <div
-                        v-for="name in providerNames"
-                        :key="name"
-                        class="provider-list-row"
-                        :class="{ active: !isCreatingProvider && providerForm.provider === name }"
-                      >
+                    <transition name="provider-cascade">
+                      <div v-if="showNewProviderTypePicker" class="provider-type-panel">
                         <button
+                          v-for="option in providerTypeOptions"
+                          :key="option.value"
                           type="button"
-                          class="provider-list-item"
-                          :class="{ active: !isCreatingProvider && providerForm.provider === name }"
-                          @click="selectManagedProvider(name)"
+                          class="provider-type-option"
+                          @click="startCreateProvider(option.value)"
                         >
-                          <span>{{ name }}</span>
-                          <small>{{ providers[name]?.type || "openai" }}</small>
-                        </button>
-                        <button
-                          v-if="name !== activeProviderName"
-                          type="button"
-                          class="provider-delete-btn"
-                          :disabled="providerDeletingName === name"
-                          @click.stop="handleDeleteProvider(name)"
-                        >
-                          <span class="sr-only">删除 {{ name }}</span>
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path
-                              d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 7h2v7h-2v-7Zm4 0h2v7h-2v-7ZM7 10h2v7H7v-7Zm1 10h8a2 2 0 0 0 2-2V8H6v10a2 2 0 0 0 2 2Z"
+                          <span class="provider-type-option-icon" aria-hidden="true">
+                            <img
+                              v-if="getProviderTypeIcon(option.value)"
+                              :src="getProviderTypeIcon(option.value)"
+                              :alt="`${option.label} 图标`"
+                              loading="lazy"
+                              @error="handleProviderIconError(option.value)"
                             />
-                          </svg>
+                            <span v-else>{{ getProviderTypeFallback(option.value) }}</span>
+                          </span>
+                          <span class="provider-type-option-copy">
+                            <span class="provider-type-option-label">{{ option.label }}</span>
+                          </span>
                         </button>
                       </div>
-                    </div>
-                  </aside>
+                    </transition>
+                  </div>
+                </div>
 
-                  <section class="provider-detail">
-                    <div class="provider-config-panel">
+                <div class="provider-list">
+                  <div
+                    v-for="name in providerNames"
+                    :key="name"
+                    class="provider-list-row"
+                    :class="{ active: !isCreatingProvider && providerForm.provider === name }"
+                  >
+                    <button
+                      type="button"
+                      class="provider-list-item"
+                      :class="{ active: !isCreatingProvider && providerForm.provider === name }"
+                      @click="selectManagedProvider(name)"
+                    >
+                      <span class="provider-list-icon" aria-hidden="true">
+                        <img
+                          v-if="getProviderTypeIcon(providers[name]?.type || 'openai')"
+                          :src="getProviderTypeIcon(providers[name]?.type || 'openai')"
+                          :alt="`${providers[name]?.type || 'openai'} 图标`"
+                          loading="lazy"
+                          @error="handleProviderIconError(providers[name]?.type || 'openai')"
+                        />
+                        <span v-else>{{ getProviderTypeFallback(providers[name]?.type || "openai") }}</span>
+                      </span>
+                      <span class="provider-list-copy">
+                        <span>{{ name }}</span>
+                        <small :title="providers[name]?.base_url || ''">
+                          {{ formatProviderLink(providers[name]?.base_url || "") || "未配置链接" }}
+                        </small>
+                      </span>
+                    </button>
+                    <button
+                      v-if="name !== activeProviderName"
+                      type="button"
+                      class="provider-delete-btn"
+                      :disabled="providerDeletingName === name"
+                      @click.stop="handleDeleteProvider(name)"
+                    >
+                      <span class="sr-only">删除 {{ name }}</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 7h2v7h-2v-7Zm4 0h2v7h-2v-7ZM7 10h2v7H7v-7Zm1 10h8a2 2 0 0 0 2-2V8H6v10a2 2 0 0 0 2 2Z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+
+              <section class="provider-workspace">
+                <div class="provider-summary-card">
+                  <div class="provider-summary-copy">
+                    <span class="field-label">设置</span>
+                    <h3 class="provider-summary-title">
+                      {{ isCreatingProvider ? providerForm.provider || "新增 Provider" : providerForm.provider || "请选择 Provider" }}
+                    </h3>
+                    <p class="provider-summary-subtitle">
+                      {{
+                        providerForm.baseUrl
+                          ? providerForm.baseUrl
+                          : isCreatingProvider
+                            ? "填写连接地址与密钥后继续配置模型"
+                            : "选择左侧 Provider 后查看并修改设置"
+                      }}
+                    </p>
+                  </div>
+                  <button
+                    v-if="!isCreatingProvider"
+                    class="ghost-btn provider-summary-action"
+                    type="button"
+                    :disabled="providerSaving || !canSaveProviderConfig"
+                    @click="handleSaveProviderConfig"
+                  >
+                    {{ providerSaving ? "保存中..." : "保存配置" }}
+                  </button>
+                </div>
+
+                <div class="provider-detail">
+                  <div class="provider-config-panel">
                       <div class="provider-section-head">
                         <div>
-                          <span class="field-label">Provider Config</span>
-                          <h4 class="provider-section-title">
-                            {{ isCreatingProvider ? "新增 Provider" : providerForm.provider || "请选择 Provider" }}
-                          </h4>
+                          <span class="field-label">基础设置</span>
                         </div>
-                        <span class="provider-type-pill">{{ selectedProviderTypeLabel }}</span>
                       </div>
 
-                      <div class="row">
-                        <label class="field">
-                          <span class="field-label">Provider 名称</span>
-                          <input
-                            v-model.trim="providerForm.provider"
-                            class="text-input"
-                            type="text"
-                            :disabled="!isCreatingProvider"
-                            placeholder="例如：openai"
-                            required
-                          />
-                        </label>
-                        <label class="field">
-                          <span class="field-label">API 类型</span>
-                          <input
-                            class="text-input"
-                            type="text"
-                            :value="selectedProviderTypeLabel"
-                            disabled
-                          />
-                        </label>
+                      <div class="provider-settings-list">
+                        <div class="provider-setting-row">
+                          <div class="provider-setting-meta">
+                            <h5 class="provider-setting-title">ID</h5>
+                            <p class="provider-setting-desc">提供商源唯一 ID（不是提供商 ID）</p>
+                          </div>
+                          <div class="provider-setting-control">
+                            <input
+                              v-model.trim="providerForm.provider"
+                              class="text-input"
+                              type="text"
+                              :disabled="!isCreatingProvider"
+                              placeholder="例如：openai"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div class="provider-setting-row">
+                          <div class="provider-setting-meta">
+                            <h5 class="provider-setting-title">Base URL</h5>
+                            <p class="provider-setting-desc">模型服务的 API 基础地址</p>
+                          </div>
+                          <div class="provider-setting-control">
+                            <input
+                              v-model.trim="providerForm.baseUrl"
+                              class="text-input"
+                              type="url"
+                              placeholder="https://api.example.com/v1"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div class="provider-setting-row">
+                          <div class="provider-setting-meta">
+                            <h5 class="provider-setting-title">API Key</h5>
+                            <p class="provider-setting-desc">
+                              {{ isCreatingProvider ? "用于访问模型服务的 API 密钥" : "留空则不修改当前 API Key" }}
+                            </p>
+                          </div>
+                          <div class="provider-setting-control">
+                            <input
+                              v-model.trim="providerForm.apiKey"
+                              class="text-input"
+                              type="password"
+                              :placeholder="isCreatingProvider ? 'sk-...' : '留空则不修改'"
+                              :required="isCreatingProvider"
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                      <label class="field">
-                        <span class="field-label">Base URL</span>
-                        <input
-                          v-model.trim="providerForm.baseUrl"
-                          class="text-input"
-                          type="url"
-                          placeholder="https://api.example.com/v1"
-                          required
-                        />
-                      </label>
-
-                      <label class="field">
-                        <span class="field-label">API Key</span>
-                        <input
-                          v-model.trim="providerForm.apiKey"
-                          class="text-input"
-                          type="password"
-                          :placeholder="isCreatingProvider ? 'sk-...' : '留空则不修改'"
-                          :required="isCreatingProvider"
-                        />
-                      </label>
-
-                      <div class="form-actions compact">
-                        <button
-                          v-if="!isCreatingProvider"
-                          class="ghost-btn"
-                          type="button"
-                          :disabled="providerSaving || !canSaveProviderConfig"
-                          @click="handleSaveProviderConfig"
-                        >
-                          {{ providerSaving ? "保存中..." : "保存平台信息" }}
-                        </button>
-                      </div>
                     </div>
 
                     <div class="provider-model-panel">
@@ -308,7 +363,6 @@
                           >
                             <span class="provider-model-name">
                               {{ option.name }}
-                              <span v-if="option.existing" class="provider-model-badge">已加入</span>
                               <span v-if="isProviderModelActive(option.name)" class="provider-model-badge active">使用中</span>
                             </span>
                             <span class="provider-model-switch">
@@ -364,7 +418,7 @@
                         </div>
                         <label v-if="canSetManagedModelActive" class="provider-model-switch default-setting-switch">
                           <input
-                            v-model="providerForm.setActive"
+                            v-model="managedProviderSetActive"
                             type="checkbox"
                             class="provider-model-checkbox"
                           />
@@ -398,9 +452,8 @@
                         </button>
                       </div>
                     </div>
-                  </section>
                 </div>
-              </div>
+              </section>
             </div>
 
             <div v-else-if="currentSection === 'account-security'" key="account-security" class="panel">
@@ -553,6 +606,17 @@ type DiscoverProviderModelsResponse = {
   configured_models: string[];
 };
 
+type ProviderTypeConfigItem = {
+  name: string;
+  key: string;
+  icon: string;
+  enabled: boolean;
+};
+
+type ProviderTypeConfigResponse = {
+  items: ProviderTypeConfigItem[];
+};
+
 const checkingAuth = ref(true);
 const isLoggedIn = ref(false);
 const currentUser = ref("");
@@ -588,9 +652,17 @@ const selectedModel = ref("");
 const activeDropdown = ref("");
 let llmToastTimer: number | undefined;
 
-const providerTypeOptions = [
-  { value: "openai", label: "OpenAI 兼容" },
-] as const;
+const providerTypeCatalog = ref<ProviderTypeConfigItem[]>([]);
+const providerIconLoadFailures = ref<Record<string, boolean>>({});
+const providerTypeOptions = computed(() =>
+  providerTypeCatalog.value
+    .filter((item) => item.enabled !== false)
+    .map((item) => ({
+      value: item.key,
+      label: item.name,
+      icon: item.icon,
+    }))
+);
 
 const providerSaving = ref(false);
 const providerDeletingName = ref("");
@@ -615,6 +687,8 @@ const accountForm = ref({
   username: "",
   password: "",
 });
+
+const defaultProviderType = computed(() => providerTypeOptions.value[0]?.value || "openai");
 
 const providerNames = computed(() => Object.keys(providers.value));
 const modelNames = computed(() => {
@@ -671,15 +745,18 @@ const canSaveProviderModels = computed(() =>
     : Boolean(providerForm.value.provider && (pendingProviderModelAdds.value.length || pendingProviderModelDeletes.value.length))
 );
 const canSetManagedModelActive = computed(() => pendingProviderModelAdds.value.length === 1);
+const managedProviderSetActive = computed({
+  get: () => (canSetManagedModelActive.value ? providerForm.value.setActive : false),
+  set: (value: boolean) => {
+    providerForm.value.setActive = canSetManagedModelActive.value ? value : false;
+  },
+});
+const effectiveProviderSetActive = computed(() =>
+  isCreatingProvider.value ? providerForm.value.setActive : managedProviderSetActive.value
+);
 const singleManagedAddedModelName = computed(() =>
   canSetManagedModelActive.value ? pendingProviderModelAdds.value[0] : ""
 );
-const selectedProviderTypeLabel = computed(() => {
-  return (
-    providerTypeOptions.find((item) => item.value === providerForm.value.type)?.label ??
-    providerTypeOptions[0].label
-  );
-});
 
 function setRouteAccount(account: string) {
   const normalized = encodeURIComponent(account);
@@ -708,12 +785,13 @@ function chooseModel(name: string) {
 }
 
 function toggleNewProviderTypePicker() {
+  if (!providerTypeOptions.value.length) return;
   showNewProviderTypePicker.value = !showNewProviderTypePicker.value;
 }
 
 function resetProviderEditor() {
   providerForm.value.provider = "";
-  providerForm.value.type = "openai";
+  providerForm.value.type = defaultProviderType.value;
   providerForm.value.baseUrl = "";
   providerForm.value.apiKey = "";
   providerForm.value.setActive = false;
@@ -733,7 +811,7 @@ function selectManagedProvider(name: string) {
   isCreatingProvider.value = false;
   showNewProviderTypePicker.value = false;
   providerForm.value.provider = name;
-  providerForm.value.type = config.type || "openai";
+  providerForm.value.type = config.type || defaultProviderType.value;
   providerForm.value.baseUrl = config.base_url || "";
   providerForm.value.apiKey = "";
   providerForm.value.setActive = false;
@@ -748,10 +826,52 @@ function isProviderModelActive(name: string) {
   return providerForm.value.provider === activeProviderName.value && name === activeModelName.value;
 }
 
+function getProviderTypeMeta(type: string) {
+  const normalizedType = String(type || "").trim().toLowerCase() || defaultProviderType.value;
+  return providerTypeCatalog.value.find((item) => item.key === normalizedType);
+}
+
+function getProviderTypeLabel(type: string) {
+  const normalizedType = String(type || "").trim().toLowerCase() || defaultProviderType.value;
+  return getProviderTypeMeta(normalizedType)?.name || normalizedType || "未知类型";
+}
+
+function getProviderTypeIcon(type: string) {
+  const normalizedType = String(type || "").trim().toLowerCase() || defaultProviderType.value;
+  if (providerIconLoadFailures.value[normalizedType]) return "";
+  return getProviderTypeMeta(normalizedType)?.icon || "";
+}
+
+function getProviderTypeFallback(type: string) {
+  const label = getProviderTypeLabel(type).trim();
+  const first = Array.from(label)[0];
+  return first ? first.toUpperCase() : "?";
+}
+
+function handleProviderIconError(type: string) {
+  const normalizedType = String(type || "").trim().toLowerCase();
+  if (!normalizedType) return;
+  providerIconLoadFailures.value = {
+    ...providerIconLoadFailures.value,
+    [normalizedType]: true,
+  };
+}
+
+function formatProviderLink(link: string) {
+  const normalizedLink = String(link || "").trim();
+  if (!normalizedLink) return "";
+  const chars = Array.from(normalizedLink);
+  return chars.length > 30 ? `${chars.slice(0, 30).join("")}...` : normalizedLink;
+}
+
 function handleDocumentPointerDown(event: Event) {
   const target = event.target as HTMLElement | null;
-  if (target?.closest(".custom-select")) return;
-  closeDropdown();
+  if (!target?.closest(".custom-select")) {
+    closeDropdown();
+  }
+  if (!target?.closest(".provider-add-menu")) {
+    showNewProviderTypePicker.value = false;
+  }
 }
 
 function showLlmToast(message: string, type: "error" | "success", node = "模型配置") {
@@ -784,6 +904,8 @@ function clearAuthState() {
   isLoggedIn.value = false;
   currentUser.value = "";
   requirePasswordChange.value = false;
+  providerTypeCatalog.value = [];
+  providerIconLoadFailures.value = {};
   providers.value = {};
   activeProviderName.value = "";
   activeModelName.value = "";
@@ -827,12 +949,6 @@ watch(
   }
 );
 
-watch(pendingProviderModelAdds, (models) => {
-  if (!isCreatingProvider.value && models.length !== 1) {
-    providerForm.value.setActive = false;
-  }
-});
-
 watch(llmError, (message) => {
   if (!message) return;
   showLlmToast(message, "error", "模型配置");
@@ -867,6 +983,23 @@ watch(loginError, (message) => {
   if (!message) return;
   showLlmToast(message, "error", "登录");
 });
+
+async function loadProviderTypeCatalog() {
+  try {
+    const data = await requestJson<ProviderTypeConfigResponse>("/llm_provider_types");
+    providerIconLoadFailures.value = {};
+    providerTypeCatalog.value = (data.items ?? [])
+      .map((item) => ({
+        name: String(item.name || item.key || "").trim(),
+        key: String(item.key || "").trim().toLowerCase(),
+        icon: String(item.icon || "").trim(),
+        enabled: item.enabled !== false,
+      }))
+      .filter((item) => item.key);
+  } catch {
+    providerTypeCatalog.value = [];
+  }
+}
 
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
@@ -915,7 +1048,7 @@ function applyLlmConfig(data: LlmConfigResponse) {
   } else if (!isCreatingProvider.value && providerForm.value.provider) {
     const config = providers.value[providerForm.value.provider];
     if (config) {
-      providerForm.value.type = config.type || "openai";
+      providerForm.value.type = config.type || defaultProviderType.value;
       providerForm.value.baseUrl = config.base_url || "";
     }
   }
@@ -948,7 +1081,7 @@ async function checkLoginStatus() {
     if (props.routeAccount !== me.user_name) {
       setRouteAccount(me.user_name);
     }
-    await loadLlmConfig();
+    await Promise.all([loadProviderTypeCatalog(), loadLlmConfig()]);
   } catch {
     clearAuthState();
   } finally {
@@ -973,7 +1106,7 @@ async function handleLogin() {
     accountForm.value.username = result.user_name;
     accountForm.value.password = "";
     setRouteAccount(result.user_name);
-    await loadLlmConfig();
+    await Promise.all([loadProviderTypeCatalog(), loadLlmConfig()]);
   } catch (error: unknown) {
     loginError.value = error instanceof Error ? error.message : "登录失败";
   } finally {
@@ -1153,7 +1286,7 @@ async function handleSaveProviderModels() {
           base_url: providerForm.value.baseUrl,
           api_key: providerForm.value.apiKey,
           models,
-          set_active: providerForm.value.setActive,
+          set_active: effectiveProviderSetActive.value,
         }),
       });
       providerMessage.value = "Provider 已新增";
@@ -1178,13 +1311,9 @@ async function handleSaveProviderModels() {
 
   const modelsToAdd = pendingProviderModelAdds.value.slice();
   const modelsToDelete = pendingProviderModelDeletes.value.slice();
+  const shouldSetActive = effectiveProviderSetActive.value;
   if (!modelsToAdd.length && !modelsToDelete.length) {
     providerError.value = "当前没有需要保存的模型变更";
-    return;
-  }
-
-  if (providerForm.value.setActive && modelsToAdd.length > 1) {
-    providerError.value = "设为默认模型时只能勾选一个新增模型";
     return;
   }
 
@@ -1196,7 +1325,7 @@ async function handleSaveProviderModels() {
         body: JSON.stringify({
           provider: providerForm.value.provider,
           model,
-          set_active: providerForm.value.setActive && index === 0,
+          set_active: shouldSetActive && index === 0,
         }),
       });
     }
@@ -1276,117 +1405,141 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped>
+.settings-page {
+  --app-bg: #f5f5f6;
+  --shell-bg: #fbfbfc;
+  --surface: #ffffff;
+  --surface-muted: #f7f7f8;
+  --surface-soft: #f3f3f4;
+  --border: #e4e4e7;
+  --border-strong: #cfcfd4;
+  --text-primary: #111111;
+  --text-secondary: #66676c;
+  --text-muted: #92939a;
+  --accent: #1f1f21;
+  --accent-soft: #ececef;
+  --accent-hover: #e7e7ea;
+  --success: #1f8a53;
+  --success-soft: rgba(31, 138, 83, 0.1);
+  --danger: #d14343;
+  --danger-soft: rgba(209, 67, 67, 0.1);
+  --radius-shell: 12px;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+  --focus-ring: 0 0 0 2px rgba(17, 17, 17, 0.08);
+  min-height: 100vh;
+  background: var(--app-bg);
+}
+
 /* 基础设定 - 纯净的米纸背景 */
 html, body {
   min-height: 100vh;
-  background: #e8e6e1;
+  background: var(--app-bg);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  color: #333330;
-  line-height: 1.6;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 .page-shell {
   position: relative;
-  background: #fafaf7;
-  width: min(95%, 1200px);
-  margin: 40px auto;
-  height: calc(100vh - 80px);
-  border-radius: 3px;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  background: var(--shell-bg);
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  overflow: visible;
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 
 /* 仅保留极淡的纸张纹理 */
 .page-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.03;
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAAAAAAAAAAAAAAAAAAAAAAAAAAn97UrAAAACHRSTlMA7v9f/v6+vnY9yG0AAAAJcEhZcwAADsQAAA7EAZUrDhsAAAA6SURBVDjLY2AYBaNgFIyCUTCqAB0InBfIeYfAmQfBqQfB6QfB6QfBeYfA6QfB6QfBeYfAGXUAgzMAABy3D9K697Y4AAAAAElFTkSuQmCC");
-  z-index: 1;
+  display: none;
 }
 
 /* 侧边栏 - 无线框，仅靠背景色区分 */
 .sidebar {
   position: relative;
   z-index: 10;
-  padding: 40px 0;
+  padding: 44px 0 36px;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.015); /* 极淡的背景色替代边框 */
+  background: var(--surface-muted);
+  border-right: 1px solid var(--border);
+  min-height: 100vh;
 }
 
 .sidebar-title {
-  padding: 0 28px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
+  padding: 0 32px;
+
+  font-size: 11px;
   font-weight: 600;
-  color: #a8a8a0;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 2.5px;
-  margin-bottom: 24px;
+  letter-spacing: 2.8px;
+  margin-bottom: 28px;
   /* 移除 border-bottom，改用字间距和颜色对比 */
 }
 
 .nav-menu {
   display: flex;
   flex-direction: column;
-  padding: 0 16px;
-  gap: 6px;
+  padding: 0 18px;
+  gap: 10px;
 }
 
 .nav-item {
   text-align: left;
-  padding: 10px 16px;
+  padding: 14px 18px 14px 22px;
   border: none;
   background: transparent;
-  color: #7a7a70;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-control);
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
   position: relative;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
 }
 
 .nav-item:hover {
-  color: #4a4a45;
-  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+  background: var(--accent-soft);
 }
 
-/* 激活状态：用圆点替代竖线 */
+/* 激活状态：左侧黑色竖线 */
 .nav-item.active {
-  color: #2c2c29;
-  font-weight: 600;
-  background: rgba(139, 115, 85, 0.08);
+  color: var(--text-primary);
+  font-weight: 700;
+  background: transparent;
 }
 
 .nav-item.active::before {
-  content: "•";
+  content: "";
   position: absolute;
-  left: 4px;
+  left: 0;
   top: 50%;
+  width: 3px;
+  height: 28px;
+  border-radius: 2px;
   transform: translateY(-50%);
-  color: #8b7355;
-  font-size: 20px;
-  line-height: 1;
-  opacity: 0.8;
+  background: var(--accent);
+  opacity: 1;
 }
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 24px 28px;
+  padding: 28px 32px;
   /* 移除 border-top */
 }
 
 .version {
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px;
-  color: #b8b8b0;
+
+  font-size: 12px;
+  color: var(--text-muted);
   letter-spacing: 1px;
   display: flex;
   align-items: center;
@@ -1397,7 +1550,7 @@ html, body {
   content: "";
   width: 4px;
   height: 4px;
-  background: #9ca3af;
+  background: var(--text-muted);
   border-radius: 50%;
 }
 
@@ -1405,20 +1558,22 @@ html, body {
 .content {
   position: relative;
   z-index: 10;
-  padding: 48px 56px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  padding: 40px 44px 48px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  overflow: visible;
 }
 
 /* 页头 - 仅靠留白分隔，无线框 */
 .page-head {
-  margin-bottom: 48px;
+  margin-bottom: 34px;
+  padding: 0 0 22px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  /* 移除 border-bottom */
+  border-bottom: 1px solid var(--border);
 }
 
 .title-group {
@@ -1428,14 +1583,14 @@ html, body {
 .page-title {
   font-size: 28px;
   font-weight: 700;
-  color: #2c2c29;
+  color: var(--text-primary);
   margin: 0 0 8px 0;
   letter-spacing: -0.3px;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: #8b8b80;
+  color: var(--text-muted);
   margin: 0;
   font-weight: 400;
 }
@@ -1446,14 +1601,14 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.04);
-  color: #7a7a70;
-  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  border: none; /* 确保无线框 */
+
 }
 
 .status-pill::before {
@@ -1461,27 +1616,26 @@ html, body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #d1d5db;
+  background: var(--text-muted);
 }
 
 .status-pill.online {
-  background: rgba(34, 197, 94, 0.08);
-  color: #15803d;
+  background: var(--surface);
+  color: var(--success);
 }
 
 .status-pill.online::before {
-  background: #22c55e;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  background: var(--success);
+  box-shadow: 0 0 0 2px rgba(31, 138, 83, 0.14);
 }
 
 /* 卡片 - 纯留白分隔 */
 .card {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
-  margin-bottom: 56px; /* 用更大的间距替代线条 */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  padding: 28px 30px;
+  margin-bottom: 32px;
   position: relative;
 }
 
@@ -1498,7 +1652,7 @@ html, body {
 .card-title {
   font-size: 20px;
   font-weight: 700;
-  color: #2c2c29;
+  color: var(--text-primary);
   margin: 0 0 8px 0;
   letter-spacing: -0.2px;
 }
@@ -1510,7 +1664,7 @@ html, body {
 
 .card-desc {
   font-size: 14px;
-  color: #7a7a70;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -1519,22 +1673,22 @@ html, body {
   display: inline-block;
   margin-top: 8px;
   font-size: 12px;
-  color: #8b7355;
-  background: rgba(139, 115, 85, 0.06);
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
   padding: 6px 12px;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  border: none;
+  border-radius: var(--radius-control);
+
 }
 
 .card-desc code {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--surface-soft);
   padding: 3px 8px;
-  border-radius: 4px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  border-radius: var(--radius-control);
+
   font-size: 13px;
-  color: #5c5c56;
-  border: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
 }
 
 /* 表单布局 */
@@ -1554,15 +1708,15 @@ html, body {
 .field-label {
   font-size: 12px;
   font-weight: 600;
-  color: #6b6b60;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+
 }
 
 .field-hint {
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-muted);
   margin-top: 4px;
   font-style: normal;
 }
@@ -1570,27 +1724,28 @@ html, body {
 /* 输入框 - 极简底边，hover时显现 */
 .text-input {
   width: 100%;
-  padding: 12px 4px;
-  border: none;
-  border-radius: 0;
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
   font-size: 15px;
-  color: #333330;
-  background: transparent;
+  color: var(--text-primary);
+  background: var(--surface);
   transition: all 0.2s;
   box-sizing: border-box;
   font-family: inherit;
-  /* 默认状态完全无线 */
-  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.06);
+  box-shadow: none;
 }
 
 .text-input:hover {
-  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.15);
+  border-color: #b9bac0;
 }
 
 .text-input:focus {
   outline: none;
-  box-shadow: 0 2px 0 0 #8b7355;
-  background: rgba(139, 115, 85, 0.02);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  background: var(--surface);
 }
 
 /* 文本域 - 淡色背景区块替代边框 */
@@ -1599,28 +1754,30 @@ html, body {
   resize: vertical;
   line-height: 1.6;
   padding: 16px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.025);
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+
   font-size: 14px;
-  border: none;
+  border: 1px solid var(--border);
   box-shadow: none;
 }
 
 .textarea-input:hover {
-  background: rgba(0, 0, 0, 0.035);
+  border-color: #b9bac0;
 }
 
 .textarea-input:focus {
-  background: rgba(139, 115, 85, 0.04);
-  box-shadow: 0 0 0 2px rgba(139, 115, 85, 0.1);
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .provider-models-box {
   height: 240px;
   padding: 16px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.025);
+  border-radius: var(--radius-panel);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -1644,11 +1801,112 @@ html, body {
   gap: 0;
 }
 
+.provider-page {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  position: relative;
+  z-index: 1;
+}
+
+.provider-list-card {
+  position: relative;
+  z-index: 8;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: visible;
+  min-height: 0;
+}
+
+.provider-list-card-head {
+  position: relative;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-list-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.provider-list-card-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.provider-list-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.provider-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.provider-summary-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+.provider-summary-copy {
+  min-width: 0;
+}
+
+.provider-summary-title {
+  margin: 10px 0 8px;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.provider-summary-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.provider-summary-action {
+  flex-shrink: 0;
+}
+
 .provider-console {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+  margin-top: 4px;
 }
 
 .provider-rail {
@@ -1665,67 +1923,160 @@ html, body {
   gap: 12px;
 }
 
+.provider-add-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 24;
+}
+
 .provider-add-btn {
-  border: none;
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: rgba(139, 115, 85, 0.1);
-  color: #5c4b38;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding: 8px 12px;
+  background: #eef6ff;
+  color: #2563eb;
   font-size: 13px;
-  font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .provider-add-btn:hover {
-  background: rgba(139, 115, 85, 0.16);
-  transform: translateY(-1px);
+  background: #e0efff;
+  border-color: #bfdbfe;
+}
+
+.provider-add-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.provider-add-plus {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.provider-add-menu.open .provider-add-caret {
+  transform: rotate(225deg) translateY(-2px);
 }
 
 .provider-type-panel {
+  position: absolute;
+  top: -8px;
+  left: calc(100% + 10px);
+  z-index: 60;
+  width: 300px;
+  max-height: min(520px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.03);
+  gap: 0;
+  padding: 8px;
+  overflow-y: auto;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
 }
 
-.provider-type-title {
-  color: #7a7a70;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
+.provider-type-panel::before {
+  content: "";
+  position: absolute;
+  top: 28px;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(-45deg);
 }
 
 .provider-type-option {
+  width: 100%;
   border: none;
-  border-radius: 10px;
-  padding: 11px 12px;
-  background: rgba(139, 115, 85, 0.08);
-  color: #4f4232;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: transparent;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   transition: background-color 0.2s ease;
 }
 
 .provider-type-option:hover {
-  background: rgba(139, 115, 85, 0.14);
+  background: #f4f7fb;
+}
+
+.provider-type-option-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.provider-type-option-icon img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.provider-type-option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-type-option-label {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.provider-type-option-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.provider-cascade-enter-active,
+.provider-cascade-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.provider-cascade-enter-from,
+.provider-cascade-leave-to {
+  opacity: 0;
+  transform: translateX(6px);
 }
 
 .provider-list {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: min(460px, calc(100vh - 320px));
+  max-height: min(720px, calc(100vh - 220px));
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  padding: 10px 14px 14px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(139, 115, 85, 0.35) transparent;
+  scrollbar-color: rgba(31, 31, 33, 0.24) transparent;
 }
 
 .provider-list::-webkit-scrollbar {
@@ -1738,7 +2089,7 @@ html, body {
 
 .provider-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(139, 115, 85, 0.28);
+  background: rgba(31, 31, 33, 0.2);
 }
 
 .provider-list-row {
@@ -1753,36 +2104,68 @@ html, body {
 
 .provider-list-item {
   width: 100%;
-  border: none;
-  border-radius: 14px;
-  padding: 14px 48px 14px 16px;
-  background: rgba(0, 0, 0, 0.03);
-  color: #4a4a45;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  padding: 14px 48px 14px 14px;
+  background: var(--surface);
+  color: var(--text-secondary);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.provider-list-item:hover {
+  background: var(--surface-muted);
+  border-color: var(--border-strong);
+}
+
+.provider-list-item.active {
+  background: var(--accent-soft);
+  border-color: #bdbec4;
+  color: var(--text-primary);
+}
+
+.provider-list-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.provider-list-icon img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.provider-list-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  transition: background-color 0.2s ease, transform 0.2s ease;
 }
 
-.provider-list-item:hover {
-  background: rgba(139, 115, 85, 0.08);
-  transform: translateY(-1px);
-}
-
-.provider-list-item.active {
-  background: rgba(139, 115, 85, 0.14);
-  color: #2c2c29;
-}
-
-.provider-list-item span {
+.provider-list-copy > span {
   font-size: 15px;
   font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.provider-list-item small {
-  color: #8b8b80;
+.provider-list-copy > small {
+  color: var(--text-muted);
   font-size: 12px;
   letter-spacing: 0.3px;
 }
@@ -1794,12 +2177,12 @@ html, body {
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(201, 63, 63, 0.08);
-  color: #c64a4a;
+  background: var(--danger-soft);
+  color: var(--danger);
   cursor: pointer;
   transform: translateY(-50%);
   opacity: 0;
@@ -1808,8 +2191,8 @@ html, body {
 }
 
 .provider-delete-btn:hover:not(:disabled) {
-  background: rgba(201, 63, 63, 0.16);
-  color: #a22929;
+  background: rgba(209, 67, 67, 0.16);
+  color: var(--danger);
 }
 
 .provider-delete-btn:disabled {
@@ -1838,7 +2221,7 @@ html, body {
 .provider-detail {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 22px;
+  gap: 20px;
   min-width: 0;
   min-height: 0;
 }
@@ -1846,8 +2229,9 @@ html, body {
 .provider-config-panel,
 .provider-model-panel {
   padding: 20px 22px;
-  border-radius: 16px;
-  background: rgba(0, 0, 0, 0.025);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .provider-section-head {
@@ -1860,7 +2244,7 @@ html, body {
 
 .provider-section-title {
   margin: 6px 0 0;
-  color: #2c2c29;
+  color: var(--text-primary);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.2px;
@@ -1869,16 +2253,56 @@ html, body {
 .provider-type-pill {
   flex-shrink: 0;
   padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(139, 115, 85, 0.12);
-  color: #6c563b;
+  border-radius: var(--radius-control);
+  background: rgba(31, 31, 33, 0.08);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 
+.provider-settings-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.provider-setting-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 32px;
+  align-items: center;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-setting-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.provider-setting-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.provider-setting-desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.provider-setting-control {
+  min-width: 0;
+}
+
 .form-actions.compact {
   margin-top: 24px;
+  padding-top: 8px;
 }
 
 .provider-model-row {
@@ -1887,13 +2311,14 @@ html, body {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(139, 115, 85, 0.06);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
   cursor: pointer;
 }
 
 .provider-model-row.locked {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--surface-soft);
 }
 
 .provider-model-name {
@@ -1901,7 +2326,7 @@ html, body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  color: #5c4b38;
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
@@ -1912,17 +2337,18 @@ html, body {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.06);
-  color: #7a7a70;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.4px;
 }
 
 .provider-model-badge.active {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .provider-model-switch {
@@ -1945,7 +2371,7 @@ html, body {
   width: 100%;
   height: 100%;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.14);
+  background: #9d9ea3;
   transition: background-color 0.2s ease;
   position: relative;
 }
@@ -1958,13 +2384,13 @@ html, body {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fafaf7;
+  background: var(--shell-bg);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
   transition: transform 0.2s ease;
 }
 
 .provider-model-checkbox:checked + .provider-model-slider {
-  background: #8b7355;
+  background: var(--accent);
 }
 
 .provider-model-checkbox:checked + .provider-model-slider::after {
@@ -1972,7 +2398,7 @@ html, body {
 }
 
 .provider-model-checkbox:focus-visible + .provider-model-slider {
-  outline: 2px solid rgba(139, 115, 85, 0.25);
+  outline: 2px solid rgba(31, 31, 33, 0.18);
   outline-offset: 2px;
 }
 
@@ -1988,8 +2414,9 @@ html, body {
   gap: 18px;
   margin: 22px 0 8px;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(139, 115, 85, 0.07);
+  border-radius: var(--radius-panel);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
 }
 
 .default-setting-card.disabled {
@@ -2005,14 +2432,14 @@ html, body {
 
 .default-setting-text {
   margin: 0;
-  color: #5c4b38;
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .default-setting-note {
   flex-shrink: 0;
-  color: #8b8b80;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -2024,7 +2451,7 @@ html, body {
 
 .provider-models-placeholder {
   margin: 0;
-  color: #8b8b80;
+  color: var(--text-muted);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -2054,9 +2481,10 @@ html, body {
   justify-content: space-between;
   gap: 10px;
   padding: 12px 16px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.02);
-  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .select-trigger::after {
@@ -2064,7 +2492,7 @@ html, body {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b7355' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2366676c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: center;
   background-size: 16px;
@@ -2077,8 +2505,9 @@ html, body {
 
 .select-trigger:focus-visible {
   outline: none;
-  background-color: rgba(139, 115, 85, 0.06);
-  box-shadow: 0 0 0 2px rgba(139, 115, 85, 0.15);
+  border-color: var(--accent);
+  background-color: var(--surface);
+  box-shadow: var(--focus-ring);
 }
 
 .select-trigger:disabled {
@@ -2094,18 +2523,17 @@ html, body {
   max-height: 240px;
   overflow-y: auto;
   padding: 6px;
-  border-radius: 8px;
-  border: 1px solid rgba(139, 115, 85, 0.2);
-  background: #fafaf7;
-  box-shadow: 0 16px 28px -16px rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .select-option {
   width: 100%;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: #333330;
+  color: var(--text-primary);
   font-size: 15px;
   text-align: left;
   padding: 10px 12px;
@@ -2118,8 +2546,8 @@ html, body {
 }
 
 .select-option.selected {
-  background: rgba(139, 115, 85, 0.14);
-  color: #2c2c29;
+  background: rgba(31, 31, 33, 0.1);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -2130,7 +2558,7 @@ html, body {
   gap: 10px;
   margin: 24px 0;
   font-size: 14px;
-  color: #4a4a45;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 8px 0;
 }
@@ -2138,7 +2566,7 @@ html, body {
 .checkbox-line input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #8b7355;
+  accent-color: var(--accent);
   cursor: pointer;
   border: none;
   border-radius: 4px;
@@ -2159,49 +2587,49 @@ html, body {
 .ghost-btn,
 .danger-btn {
   padding: 10px 24px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  border: none; /* 移除边框 */
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  border: 1px solid var(--border-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   letter-spacing: 0.3px;
   font-family: inherit;
-  background: rgba(0, 0, 0, 0.06);
-  color: #5c5c56;
+  background: var(--surface);
+  color: var(--text-primary);
 }
 
 .primary-btn:hover:not(:disabled) {
-  background: #8b7355;
+  background: var(--accent);
   color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px -2px rgba(139, 115, 85, 0.3);
+  border-color: var(--accent);
 }
 
 .ghost-btn {
-  background: transparent;
-  color: #7a7a70;
+  background: var(--surface);
+  color: var(--text-secondary);
 }
 
 .ghost-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.04);
-  color: #4a4a45;
+  background: var(--accent-soft);
+  color: var(--text-primary);
 }
 
 .danger-btn {
-  background: rgba(220, 38, 38, 0.06);
-  color: #b91c1c;
+  background: #fff;
+  border-color: rgba(209, 67, 67, 0.28);
+  color: var(--danger);
   margin-left: auto;
 }
 
 .danger-btn:hover:not(:disabled) {
-  background: #dc2626;
+  background: var(--danger);
   color: white;
-  box-shadow: 0 4px 12px -2px rgba(220, 38, 38, 0.25);
+  border-color: var(--danger);
 }
 
 button:disabled {
@@ -2236,13 +2664,13 @@ button.block {
 }
 
 .success-text {
-  color: #15803d;
+  color: var(--success);
   font-size: 14px;
   margin: 0;
   padding: 16px;
-  background: rgba(34, 197, 94, 0.08);
-  border-radius: 8px;
-  border-left: none;
+  background: var(--success-soft);
+  border-radius: var(--radius-control);
+  border: 1px solid rgba(31, 138, 83, 0.18);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -2269,14 +2697,13 @@ button.block {
 .top-toast-success {
   min-width: 260px;
   padding: 12px 18px;
-  border-radius: 10px;
-  box-shadow: 0 14px 28px -16px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-control);
+  border: 1px solid rgba(31, 138, 83, 0.22);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.45;
-  backdrop-filter: blur(8px);
-  background: rgba(21, 128, 61, 0.92);
-  color: #f0fdf4;
+  background: #f3fbf6;
+  color: var(--success);
 }
 
 :deep(.top-error-card.error-card) {
@@ -2301,12 +2728,12 @@ button.block {
   align-items: center;
   gap: 12px;
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin: 24px 0;
   font-size: 14px;
   background: rgba(251, 191, 36, 0.1);
   color: #854d0e;
-  border: none;
+  border: 1px solid rgba(234, 179, 8, 0.2);
   position: relative;
 }
 
@@ -2341,7 +2768,7 @@ button.block {
   width: 28px;
   height: 28px;
   border: 2px solid rgba(0, 0, 0, 0.05);
-  border-top-color: #8b7355;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -2355,7 +2782,6 @@ button.block {
   position: fixed;
   inset: 0;
   background: rgba(40, 38, 35, 0.6);
-  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2364,36 +2790,29 @@ button.block {
 }
 
 .force-card {
-  background: #fafaf7;
-  border-radius: 12px;
+  background: var(--shell-bg);
+  border-radius: var(--radius-panel);
   padding: 48px;
   width: 100%;
   max-width: 480px;
-  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.15);
-  border: none; /* 移除边框 */
+  border: 1px solid var(--border);
 }
 
 .force-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.02;
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAAAAAAAAAAAAAAAAAAAAAAAAAAn97UrAAAACHRSTlMA7v9f/v6+vnY9yG0AAAAJcEhZcwAADsQAAA7EAZUrDhsAAAA6SURBVDjLY2AYBaNgFIyCUTCqAB0InBfIeYfAmQfBqQfB6QfB6QfBeYfA6QfB6QfBeYfAGXUAgzMAABy3D9K697Y4AAAAAElFTkSuQmCC");
-  border-radius: 12px;
+  display: none;
 }
 
 .force-title {
   font-size: 24px;
   font-weight: 700;
-  color: #2c2c29;
+  color: var(--text-primary);
   margin: 0 0 12px 0;
   border-bottom: none; /* 移除底边 */
   padding-bottom: 0;
 }
 
 .force-desc {
-  color: #7a7a70;
+  color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.6;
   font-size: 15px;
@@ -2419,9 +2838,8 @@ button.block {
 @media (max-width: 968px) {
   .page-shell {
     grid-template-columns: 1fr;
-    margin: 20px auto;
-    width: min(98%, 640px);
-    height: calc(100vh - 40px);
+    width: 100%;
+    min-height: 100vh;
   }
   
   .sidebar {
@@ -2451,7 +2869,7 @@ button.block {
   }
   
   .nav-item.active {
-    background: rgba(139, 115, 85, 0.12);
+    background: rgba(31, 31, 33, 0.08);
   }
   
   .nav-item.active::before {
@@ -2466,9 +2884,35 @@ button.block {
     padding: 32px 28px;
   }
 
+  .provider-page,
   .provider-console {
     grid-template-columns: 1fr;
     gap: 20px;
+  }
+
+  .provider-summary-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .provider-type-panel {
+    top: calc(100% + 10px);
+    left: auto;
+    right: 0;
+    width: min(300px, calc(100vw - 48px));
+  }
+
+  .provider-type-panel::before {
+    top: -6px;
+    left: auto;
+    right: 18px;
+    transform: rotate(45deg);
+  }
+  
+  .provider-setting-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 18px 0;
   }
   
   .row {
@@ -2481,3 +2925,4 @@ button.block {
   }
 }
 </style>
+
