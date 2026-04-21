@@ -99,7 +99,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from "vue";
 
-const RECOMMENDED_CHAR_COUNT = 1800;
+const RECOMMENDED_CHAR_COUNT = 800;
 
 const props = defineProps({
   meta: {
@@ -139,31 +139,37 @@ const characterCount = computed(() => Array.from(answer.value.trim()).length);
 
 const progressWidth = computed(() => {
   const ratio = Math.min(1, characterCount.value / RECOMMENDED_CHAR_COUNT);
-  return `${Math.round(ratio * 100)}%`;
+  return `${(ratio * 100).toFixed(1)}%`;
 });
 
 const isRecommendationReached = computed(
   () => characterCount.value >= RECOMMENDED_CHAR_COUNT
 );
 
+const PROGRESS_STAGES = [
+  { threshold: 0,    message: "从'那天发生了什么'开始写起，哪怕只有一句话。" },
+  { threshold: 0.01,  message: "很好，先交代一下时间地点，让读者进入那个场景。" },
+  { threshold: 0.2,  message: "背景已清晰，现在讲讲当时你和谁在一起？正在做什么？" },
+  { threshold: 0.3,  message: "继续推进，那个平静被什么打破了？意外是怎么发生的？" },
+  { threshold: 0.4,  message: "故事开始起伏，详细说说那个关键转折点的经过。" },
+  { threshold: 0.5,  message: " halfway there！当时最让你意外或震惊的是什么？" },
+  { threshold: 0.6,  message: "冲突达到高点，你做了什么选择？或者事情如何发展？" },
+  { threshold: 0.7,  message: "结果出来的那一刻，你的第一反应是什么？心里在想什么？" },
+  { threshold: 0.8,  message: "快完成了，这件事在当时给你带来了什么情绪或冲击？" },
+  { threshold: 0.9,  message: "最后一步，回望这段经历，它如何改变了你看待事情的方式？" },
+  { threshold: 1,    message: "一个很完整的故事！这段珍贵的经历值得被永远记录下来 ✨" }
+];
 const progressTip = computed(() => {
-  const count = characterCount.value;
-
-  if (count === 0) {
-    return "先写第一句场景描述，开始后会更容易继续写。";
+  const ratio = characterCount.value / RECOMMENDED_CHAR_COUNT;
+  
+  // 从后往前匹配，找到当前所处的阶段
+  for (let i = PROGRESS_STAGES.length - 1; i >= 0; i--) {
+    if (ratio >= PROGRESS_STAGES[i].threshold) {
+      return PROGRESS_STAGES[i].message;
+    }
   }
-
-  if (count < 80) {
-    return "很好，继续补充一个细节或对话，内容会更真实。";
-  }
-
-  if (count < RECOMMENDED_CHAR_COUNT) {
-    return "已经很完整，再补一段“你的思考变化”会更有价值。";
-  }
-
-  return "信息非常完整，可以直接归档。";
+  return PROGRESS_STAGES[0].message;
 });
-
 const handleSubmit = () => {
   if (props.disabled) return;
   if (!answer.value.trim() || status.value !== "idle") return;
