@@ -5,7 +5,9 @@ from functools import partial
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
+import aiohttp
 import uvicorn
 from fastapi import (
     FastAPI,
@@ -78,6 +80,22 @@ class AddProviderBody(BaseModel):
     api_key: str
     models: list[str]
     set_active: bool = False
+
+
+class UpdateProviderBody(BaseModel):
+    provider: str
+    base_url: str
+    api_key: str | None = None
+
+
+class DiscoverProviderModelsBody(BaseModel):
+    type: str = "openai"
+    base_url: str
+    api_key: str
+
+
+class DiscoverSavedProviderBody(BaseModel):
+    provider: str
 
 
 class AddModelBody(BaseModel):
@@ -396,6 +414,72 @@ async def update_user(request: Request, user: LoginBody) -> dict[str, bool]:
 
 PROVIDER_CONFIG_PATH = Path("llm/config/provider.json")
 
+
+def _build_openai_models_url(base_url: str) -> str:
+    normalized = str(base_url or "").strip().rstrip("/")
+    if not normalized:
+        raise HTTPException(status_code=400, detail="base_url is required")
+
+    parsed = urlsplit(normalized)
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="base_url must be a valid absolute URL")
+
+    path = parsed.path.rstrip("/")
+    if not path:
+        path = "/v1"
+    elif not path.endswith("/v1"):
+        path = f"{path}/v1"
+
+    return urlunsplit((parsed.scheme, parsed.netloc, f"{path}/models", parsed.query, parsed.fragment))
+
+
+async def _discover_openai_models(base_url: str, api_key: str) -> list[str]:
+    request_url = _build_openai_models_url(base_url)
+    timeout = aiohttp.ClientTimeout(total=15)
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(request_url, headers=headers, allow_redirects=True) as response:
+                if response.status >= 400:
+                    detail = await response.text()
+                    message = detail.strip() or f"request failed with status {response.status}"
+                    raise HTTPException(status_code=400, detail=f"获取模型列表失败：{message}")
+
+                try:
+                    payload = await response.json()
+                except aiohttp.ContentTypeError as error:
+                    detail = await response.text()
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"模型列表响应不是 JSON：{detail.strip() or error}",
+                    ) from error
+    except HTTPException:
+        raise
+    except aiohttp.ClientError as error:
+        raise HTTPException(status_code=400, detail=f"获取模型列表失败：{error}") from error
+    except asyncio.TimeoutError as error:
+        raise HTTPException(status_code=400, detail="获取模型列表超时") from error
+
+    items = payload.get("data")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="模型列表响应格式无效")
+
+    models: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        if model_id and model_id not in models:
+            models.append(model_id)
+
+    if not models:
+        raise HTTPException(status_code=400, detail="未获取到任何模型")
+
+    return models
+
 #更换llm_model
 @app.put("/update_llm")
 async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, str]:
@@ -467,6 +551,66 @@ async def llm_config(request: Request) -> dict[str, Any]:
     }
 
 
+@app.post("/discover_llm_models")
+async def discover_llm_models(
+    request: Request,
+    payload: DiscoverProviderModelsBody,
+) -> dict[str, Any]:
+    await _require_login_token(request)
+
+    provider_type = payload.type.strip().lower() or "openai"
+    api_key = payload.api_key.strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+
+    if provider_type == "openai":
+        models = await _discover_openai_models(payload.base_url, api_key)
+        return {"type": provider_type, "models": models}
+
+    raise HTTPException(status_code=400, detail=f"unsupported provider type: {provider_type}")
+
+
+@app.post("/discover_provider_models")
+async def discover_provider_models(
+    request: Request,
+    payload: DiscoverSavedProviderBody,
+) -> dict[str, Any]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    provider_conf = providers[provider]
+    if not isinstance(provider_conf, dict):
+        raise HTTPException(status_code=500, detail="invalid provider config")
+
+    provider_type = str(provider_conf.get("type") or "openai").strip().lower()
+    base_url = str(provider_conf.get("base_url") or "").strip()
+    api_key = str(provider_conf.get("api_key") or "").strip()
+    configured_models = provider_conf.get("models")
+    safe_configured_models = [str(m).strip() for m in configured_models] if isinstance(configured_models, list) else []
+
+    if not api_key:
+        raise HTTPException(status_code=400, detail="provider api_key is missing")
+
+    if provider_type == "openai":
+        models = await _discover_openai_models(base_url, api_key)
+        return {
+            "provider": provider,
+            "type": provider_type,
+            "models": models,
+            "configured_models": [m for m in safe_configured_models if m],
+        }
+
+    raise HTTPException(status_code=400, detail=f"unsupported provider type: {provider_type}")
+
+
 @app.put("/add_llm_provider")
 async def add_llm_provider(request: Request, payload: AddProviderBody) -> dict[str, str]:
     await _require_login_token(request)
@@ -500,6 +644,35 @@ async def add_llm_provider(request: Request, payload: AddProviderBody) -> dict[s
 
     save_json_config(PROVIDER_CONFIG_PATH, data)
     return {"provider": provider, "model": models[0]}
+
+
+@app.put("/update_llm_provider")
+async def update_llm_provider(request: Request, payload: UpdateProviderBody) -> dict[str, str]:
+    await _require_login_token(request)
+
+    provider = payload.provider.strip()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+
+    base_url = payload.base_url.strip()
+    if not base_url:
+        raise HTTPException(status_code=400, detail="base_url is required")
+
+    data = load_json_config(PROVIDER_CONFIG_PATH)
+    providers = data.get("llm_providers")
+    if not isinstance(providers, dict) or provider not in providers:
+        raise HTTPException(status_code=400, detail="provider not found")
+
+    provider_conf = providers[provider]
+    if not isinstance(provider_conf, dict):
+        raise HTTPException(status_code=500, detail="invalid provider config")
+
+    provider_conf["base_url"] = base_url
+    if payload.api_key is not None and payload.api_key.strip():
+        provider_conf["api_key"] = payload.api_key.strip()
+
+    save_json_config(PROVIDER_CONFIG_PATH, data)
+    return {"provider": provider}
 
 
 @app.put("/add_llm_model")
@@ -582,6 +755,9 @@ async def delete_llm_model(request: Request, payload: DeleteModelBody) -> dict[s
     active_provider = str(data.get("active_llm_provider") or "").strip()
     active_model = str(data.get("active_llm_model") or "").strip()
     if active_provider == provider and active_model == model:
+        logger.print(
+            f"reject delete active model: provider={provider}, model={model}"
+        )
         raise HTTPException(status_code=400, detail="model is currently active")
 
     models.remove(model)

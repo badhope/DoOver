@@ -84,11 +84,6 @@
           <transition name="fade-slide" mode="out-in">
             <div v-if="currentSection === 'llm-active'" key="llm-active" class="panel">
               <div class="card">
-                <div class="card-header">
-                  <h3 class="card-title">默认模型</h3>
-                  <p class="card-desc">选择当前使用的 AI 对话模型</p>
-                </div>
-
                 <form class="form-grid" @submit.prevent="handleUpdateLlm">
                   <div class="row">
                     <label class="field">
@@ -160,171 +155,256 @@
               </div>
             </div>
 
-            <div v-else-if="currentSection === 'llm-add-provider'" key="llm-add-provider" class="panel">
+            <div v-else-if="currentSection === 'llm-providers'" key="llm-providers" class="panel">
               <div class="card">
-                <div class="card-header">
-                  <h3 class="card-title">接入新平台</h3>
-                  <p class="card-desc">添加新的 LLM 服务提供商配置</p>
-                </div>
+                <div class="provider-console">
+                  <aside class="provider-rail">
+                    <div class="provider-rail-head">
+                      <span class="field-label">Providers</span>
+                      <button
+                        type="button"
+                        class="provider-add-btn"
+                        @click="toggleNewProviderTypePicker"
+                      >
+                        + 新增
+                      </button>
+                    </div>
 
-                <form class="form-grid" @submit.prevent="handleAddProvider">
-                  <div class="row">
-                    <label class="field">
-                      <span class="field-label">Provider 名称</span>
-                      <input
-                        v-model.trim="providerForm.provider"
-                        class="text-input"
-                        type="text"
-                        placeholder="例如：OpenAI"
-                        required
-                      />
-                    </label>
-                    <label class="field">
-                      <span class="field-label">API 类型</span>
-                      <div class="custom-select" :class="{ open: activeDropdown === 'provider-type' }">
-                        <button
-                          type="button"
-                          class="text-input select-trigger"
-                          @click="toggleDropdown('provider-type')"
-                        >
-                          <span>{{ selectedProviderTypeLabel }}</span>
-                        </button>
-                        <div v-if="activeDropdown === 'provider-type'" class="select-menu">
-                          <button
-                            v-for="option in providerTypeOptions"
-                            :key="option.value"
-                            type="button"
-                            class="select-option"
-                            :class="{ selected: providerForm.type === option.value }"
-                            @click="chooseProviderType(option.value)"
-                          >
-                            {{ option.label }}
-                          </button>
-                        </div>
-                      </div>
-                    </label>
-                  </div>
+                    <div v-if="showNewProviderTypePicker" class="provider-type-panel">
+                      <span class="provider-type-title">选择 Provider 类型</span>
+                      <button
+                        v-for="option in providerTypeOptions"
+                        :key="option.value"
+                        type="button"
+                        class="provider-type-option"
+                        @click="startCreateProvider(option.value)"
+                      >
+                        {{ option.label }}
+                      </button>
+                    </div>
 
-                  <label class="field">
-                    <span class="field-label">Base URL</span>
-                    <input
-                      v-model.trim="providerForm.baseUrl"
-                      class="text-input"
-                      type="url"
-                      placeholder="https://api.example.com/v1"
-                      required
-                    />
-                  </label>
-
-                  <label class="field">
-                    <span class="field-label">API Key</span>
-                    <input
-                      v-model.trim="providerForm.apiKey"
-                      class="text-input"
-                      type="password"
-                      placeholder="sk-..."
-                      required
-                    />
-                  </label>
-
-                  <label class="field">
-                    <span class="field-label">模型列表</span>
-                    <textarea
-                      v-model="providerForm.modelsText"
-                      class="text-input textarea-input"
-                      rows="3"
-                      placeholder="每行一个模型名，例如：&#10;gpt-4&#10;gpt-3.5-turbo"
-                      required
-                    />
-                    <span class="field-hint">支持逗号或换行分隔</span>
-                  </label>
-
-                  <label class="checkbox-line">
-                    <input v-model="providerForm.setActive" type="checkbox" />
-                    <span>添加后立即设为默认 Provider</span>
-                  </label>
-
-                  <div class="form-actions">
-                    <button class="primary-btn" type="submit" :disabled="providerSaving">
-                      {{ providerSaving ? "添加中..." : "添加 Provider" }}
-                    </button>
-                  </div>
-                </form>
-
-              </div>
-            </div>
-
-            <div v-else-if="currentSection === 'llm-add-model'" key="llm-add-model" class="panel">
-              <div class="card">
-                <div class="card-header">
-                  <h3 class="card-title">添加模型</h3>
-                  <p class="card-desc">为已有 Provider 添加新的可用模型</p>
-                </div>
-
-                <form class="form-grid" @submit.prevent="handleAddModel">
-                  <div class="row">
-                    <label class="field">
-                      <span class="field-label">选择 Provider</span>
+                    <div class="provider-list">
                       <div
-                        class="custom-select"
-                        :class="{ open: activeDropdown === 'add-model-provider', disabled: !providerNames.length }"
+                        v-for="name in providerNames"
+                        :key="name"
+                        class="provider-list-row"
+                        :class="{ active: !isCreatingProvider && providerForm.provider === name }"
                       >
                         <button
                           type="button"
-                          class="text-input select-trigger"
-                          :disabled="!providerNames.length"
-                          @click="toggleDropdown('add-model-provider')"
+                          class="provider-list-item"
+                          :class="{ active: !isCreatingProvider && providerForm.provider === name }"
+                          @click="selectManagedProvider(name)"
                         >
-                          <span>{{ addModelForm.provider || "请选择 Provider" }}</span>
+                          <span>{{ name }}</span>
+                          <small>{{ providers[name]?.type || "openai" }}</small>
                         </button>
-                        <div v-if="activeDropdown === 'add-model-provider'" class="select-menu">
-                          <button
-                            v-for="name in providerNames"
-                            :key="name"
-                            type="button"
-                            class="select-option"
-                            :class="{ selected: addModelForm.provider === name }"
-                            @click="chooseAddModelProvider(name)"
-                          >
-                            {{ name }}
-                          </button>
-                        </div>
+                        <button
+                          v-if="name !== activeProviderName"
+                          type="button"
+                          class="provider-delete-btn"
+                          :disabled="providerDeletingName === name"
+                          @click.stop="handleDeleteProvider(name)"
+                        >
+                          <span class="sr-only">删除 {{ name }}</span>
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 7h2v7h-2v-7Zm4 0h2v7h-2v-7ZM7 10h2v7H7v-7Zm1 10h8a2 2 0 0 0 2-2V8H6v10a2 2 0 0 0 2 2Z"
+                            />
+                          </svg>
+                        </button>
                       </div>
-                    </label>
-                    <label class="field">
-                      <span class="field-label">模型名称</span>
-                      <input
-                        v-model.trim="addModelForm.model"
-                        class="text-input"
-                        type="text"
-                        placeholder="例如：gpt-4-turbo"
-                        required
-                      />
-                    </label>
-                  </div>
+                    </div>
+                  </aside>
 
-                  <label class="checkbox-line">
-                    <input v-model="addModelForm.setActive" type="checkbox" />
-                    <span>添加后立即设为默认模型</span>
-                  </label>
+                  <section class="provider-detail">
+                    <div class="provider-config-panel">
+                      <div class="provider-section-head">
+                        <div>
+                          <span class="field-label">Provider Config</span>
+                          <h4 class="provider-section-title">
+                            {{ isCreatingProvider ? "新增 Provider" : providerForm.provider || "请选择 Provider" }}
+                          </h4>
+                        </div>
+                        <span class="provider-type-pill">{{ selectedProviderTypeLabel }}</span>
+                      </div>
 
-                  <div class="form-actions">
-                    <button class="primary-btn" type="submit" :disabled="addModelSaving">
-                      {{ addModelSaving ? "添加中..." : "添加模型" }}
-                    </button>
-                  </div>
-                </form>
+                      <div class="row">
+                        <label class="field">
+                          <span class="field-label">Provider 名称</span>
+                          <input
+                            v-model.trim="providerForm.provider"
+                            class="text-input"
+                            type="text"
+                            :disabled="!isCreatingProvider"
+                            placeholder="例如：openai"
+                            required
+                          />
+                        </label>
+                        <label class="field">
+                          <span class="field-label">API 类型</span>
+                          <input
+                            class="text-input"
+                            type="text"
+                            :value="selectedProviderTypeLabel"
+                            disabled
+                          />
+                        </label>
+                      </div>
 
+                      <label class="field">
+                        <span class="field-label">Base URL</span>
+                        <input
+                          v-model.trim="providerForm.baseUrl"
+                          class="text-input"
+                          type="url"
+                          placeholder="https://api.example.com/v1"
+                          required
+                        />
+                      </label>
+
+                      <label class="field">
+                        <span class="field-label">API Key</span>
+                        <input
+                          v-model.trim="providerForm.apiKey"
+                          class="text-input"
+                          type="password"
+                          :placeholder="isCreatingProvider ? 'sk-...' : '留空则不修改'"
+                          :required="isCreatingProvider"
+                        />
+                      </label>
+
+                      <div class="form-actions compact">
+                        <button
+                          v-if="!isCreatingProvider"
+                          class="ghost-btn"
+                          type="button"
+                          :disabled="providerSaving || !canSaveProviderConfig"
+                          @click="handleSaveProviderConfig"
+                        >
+                          {{ providerSaving ? "保存中..." : "保存平台信息" }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="provider-model-panel">
+                      <div class="provider-section-head">
+                        <div>
+                          <span class="field-label">Models</span>
+                          <h4 class="provider-section-title">模型列表</h4>
+                        </div>
+                        <span v-if="providerModelOptions.length" class="field-hint">
+                          待新增 {{ pendingProviderModelAdds.length }} 个，待删除 {{ pendingProviderModelDeletes.length }} 个
+                        </span>
+                      </div>
+
+                      <div class="provider-models-box" :class="{ empty: !providerModelOptions.length }">
+                        <div v-if="providerModelOptions.length" class="provider-models-list">
+                          <label
+                            v-for="option in providerModelOptions"
+                            :key="option.name"
+                            class="provider-model-row"
+                            :class="{ locked: isProviderModelActive(option.name) }"
+                          >
+                            <span class="provider-model-name">
+                              {{ option.name }}
+                              <span v-if="option.existing" class="provider-model-badge">已加入</span>
+                              <span v-if="isProviderModelActive(option.name)" class="provider-model-badge active">使用中</span>
+                            </span>
+                            <span class="provider-model-switch">
+                            <input
+                              v-model="option.enabled"
+                              type="checkbox"
+                              class="provider-model-checkbox"
+                              :disabled="isProviderModelActive(option.name)"
+                            />
+                            <span class="provider-model-slider"></span>
+                            </span>
+                          </label>
+                        </div>
+                        <p v-else class="provider-models-placeholder">
+                          {{ isCreatingProvider ? "填写平台信息后获取模型列表" : "请选择 Provider，然后获取模型列表" }}
+                        </p>
+                      </div>
+
+                      <div
+                        v-if="isCreatingProvider && selectedProviderModels.length"
+                        class="default-setting-card"
+                      >
+                        <div class="default-setting-copy">
+                          <span class="field-label">默认 Provider</span>
+                          <p class="default-setting-text">
+                            添加后将 {{ pendingProviderName }} 设为默认 Provider
+                          </p>
+                        </div>
+                        <label class="provider-model-switch default-setting-switch">
+                          <input
+                            v-model="providerForm.setActive"
+                            type="checkbox"
+                            class="provider-model-checkbox"
+                          />
+                          <span class="provider-model-slider"></span>
+                        </label>
+                      </div>
+
+                      <div
+                        v-if="!isCreatingProvider && pendingProviderModelAdds.length"
+                        class="default-setting-card"
+                        :class="{ disabled: !canSetManagedModelActive }"
+                      >
+                        <div class="default-setting-copy">
+                          <span class="field-label">默认模型</span>
+                          <p class="default-setting-text">
+                            {{
+                              canSetManagedModelActive
+                                ? `保存后将 ${singleManagedAddedModelName} 设为默认模型`
+                                : `当前勾选了 ${pendingProviderModelAdds.length} 个新增模型，如需设为默认请只保留一个`
+                            }}
+                          </p>
+                        </div>
+                        <label v-if="canSetManagedModelActive" class="provider-model-switch default-setting-switch">
+                          <input
+                            v-model="providerForm.setActive"
+                            type="checkbox"
+                            class="provider-model-checkbox"
+                          />
+                          <span class="provider-model-slider"></span>
+                        </label>
+                        <span v-else class="default-setting-note">仅单选可设默认</span>
+                      </div>
+
+                      <div class="provider-model-actions">
+                        <button
+                          class="ghost-btn"
+                          type="button"
+                          :disabled="providerModelsLoading || !canFetchManagedModels"
+                          @click="handleFetchProviderModels"
+                        >
+                          {{
+                            providerModelsLoading
+                              ? "获取中..."
+                              : providerModelOptions.length
+                                ? "重新获取模型列表"
+                                : "获取模型列表"
+                          }}
+                        </button>
+                        <button
+                          class="primary-btn"
+                          type="button"
+                          :disabled="providerSaving || !canSaveProviderModels"
+                          @click="handleSaveProviderModels"
+                        >
+                          {{ providerSaving ? "保存中..." : isCreatingProvider ? "保存平台与模型" : "保存模型设置" }}
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
               </div>
             </div>
 
             <div v-else-if="currentSection === 'account-security'" key="account-security" class="panel">
               <div class="card">
-                <div class="card-header">
-                  <h3 class="card-title">账号设置</h3>
-                  <p class="card-desc">修改登录凭据和安全选项</p>
-                </div>
-
                 <form class="form-grid" @submit.prevent="handleUpdateAccountSubmit">
                   <div class="row">
                     <label class="field">
@@ -420,14 +500,9 @@ const menuItems = [
     desc: "选择和管理当前使用的 AI 对话模型",
   },
   {
-    id: "llm-add-provider",
-    label: "接入平台",
-    desc: "添加新的 LLM 服务提供商",
-  },
-  {
-    id: "llm-add-model",
-    label: "扩展模型",
-    desc: "为已有平台添加更多模型选项",
+    id: "llm-providers",
+    label: "平台与模型",
+    desc: "接入并管理 LLM Provider、密钥和模型列表",
   },
   {
     id: "account-security",
@@ -466,6 +541,18 @@ type LlmConfigResponse = {
   providers: Record<string, LlmProviderConfig>;
 };
 
+type DiscoverModelsResponse = {
+  type: string;
+  models: string[];
+};
+
+type DiscoverProviderModelsResponse = {
+  provider: string;
+  type: string;
+  models: string[];
+  configured_models: string[];
+};
+
 const checkingAuth = ref(true);
 const isLoggedIn = ref(false);
 const currentUser = ref("");
@@ -494,6 +581,8 @@ const llmToast = ref<{
   node: "模型配置",
 });
 const providers = ref<Record<string, LlmProviderConfig>>({});
+const activeProviderName = ref("");
+const activeModelName = ref("");
 const selectedProvider = ref("");
 const selectedModel = ref("");
 const activeDropdown = ref("");
@@ -501,28 +590,21 @@ let llmToastTimer: number | undefined;
 
 const providerTypeOptions = [
   { value: "openai", label: "OpenAI 兼容" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "gemini", label: "Google Gemini" },
 ] as const;
 
 const providerSaving = ref(false);
+const providerDeletingName = ref("");
+const providerModelsLoading = ref(false);
 const providerError = ref("");
 const providerMessage = ref("");
+const providerModelOptions = ref<{ name: string; enabled: boolean; existing: boolean }[]>([]);
+const isCreatingProvider = ref(false);
+const showNewProviderTypePicker = ref(false);
 const providerForm = ref({
   provider: "",
   type: "openai",
   baseUrl: "",
   apiKey: "",
-  modelsText: "",
-  setActive: false,
-});
-
-const addModelSaving = ref(false);
-const addModelError = ref("");
-const addModelMessage = ref("");
-const addModelForm = ref({
-  provider: "",
-  model: "",
   setActive: false,
 });
 
@@ -540,6 +622,58 @@ const modelNames = computed(() => {
   return providers.value[selectedProvider.value]?.models ?? [];
 });
 const canSubmitLlm = computed(() => Boolean(selectedProvider.value && selectedModel.value));
+const canFetchProviderModels = computed(() =>
+  Boolean(
+    providerForm.value.type &&
+      providerForm.value.baseUrl.trim() &&
+      providerForm.value.apiKey.trim()
+  )
+);
+const canSubmitProvider = computed(() =>
+  Boolean(
+    providerForm.value.provider.trim() &&
+      providerForm.value.baseUrl.trim() &&
+      providerForm.value.apiKey.trim() &&
+      selectedProviderModels.value.length
+  )
+);
+const selectedProviderModels = computed(() =>
+  providerModelOptions.value
+    .filter((item) => item.enabled)
+    .map((item) => item.name)
+);
+const pendingProviderName = computed(() => providerForm.value.provider.trim() || "该平台");
+const pendingProviderModelAdds = computed(() =>
+  providerModelOptions.value
+    .filter((item) => item.enabled && !item.existing)
+    .map((item) => item.name)
+);
+const pendingProviderModelDeletes = computed(() =>
+  providerModelOptions.value
+    .filter((item) => item.existing && !item.enabled)
+    .map((item) => item.name)
+);
+const canFetchManagedModels = computed(() =>
+  isCreatingProvider.value
+    ? Boolean(
+        providerForm.value.type &&
+          providerForm.value.baseUrl.trim() &&
+          providerForm.value.apiKey.trim()
+      )
+    : Boolean(providerForm.value.provider)
+);
+const canSaveProviderConfig = computed(() =>
+  Boolean(!isCreatingProvider.value && providerForm.value.provider && providerForm.value.baseUrl.trim())
+);
+const canSaveProviderModels = computed(() =>
+  isCreatingProvider.value
+    ? canSubmitProvider.value
+    : Boolean(providerForm.value.provider && (pendingProviderModelAdds.value.length || pendingProviderModelDeletes.value.length))
+);
+const canSetManagedModelActive = computed(() => pendingProviderModelAdds.value.length === 1);
+const singleManagedAddedModelName = computed(() =>
+  canSetManagedModelActive.value ? pendingProviderModelAdds.value[0] : ""
+);
 const selectedProviderTypeLabel = computed(() => {
   return (
     providerTypeOptions.find((item) => item.value === providerForm.value.type)?.label ??
@@ -553,13 +687,6 @@ function setRouteAccount(account: string) {
   if (window.location.pathname === nextPath) return;
   window.history.replaceState({}, "", nextPath);
   window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function parseModelsText(raw: string): string[] {
-  return raw
-    .split(/[\n,]/g)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function toggleDropdown(name: string) {
@@ -580,14 +707,45 @@ function chooseModel(name: string) {
   closeDropdown();
 }
 
-function chooseProviderType(type: string) {
-  providerForm.value.type = type;
-  closeDropdown();
+function toggleNewProviderTypePicker() {
+  showNewProviderTypePicker.value = !showNewProviderTypePicker.value;
 }
 
-function chooseAddModelProvider(name: string) {
-  addModelForm.value.provider = name;
-  closeDropdown();
+function resetProviderEditor() {
+  providerForm.value.provider = "";
+  providerForm.value.type = "openai";
+  providerForm.value.baseUrl = "";
+  providerForm.value.apiKey = "";
+  providerForm.value.setActive = false;
+  providerModelOptions.value = [];
+}
+
+function startCreateProvider(type: string) {
+  isCreatingProvider.value = true;
+  showNewProviderTypePicker.value = false;
+  resetProviderEditor();
+  providerForm.value.type = type;
+}
+
+function selectManagedProvider(name: string) {
+  const config = providers.value[name];
+  if (!config) return;
+  isCreatingProvider.value = false;
+  showNewProviderTypePicker.value = false;
+  providerForm.value.provider = name;
+  providerForm.value.type = config.type || "openai";
+  providerForm.value.baseUrl = config.base_url || "";
+  providerForm.value.apiKey = "";
+  providerForm.value.setActive = false;
+  providerModelOptions.value = (config.models ?? []).map((model) => ({
+    name: model,
+    enabled: true,
+    existing: true,
+  }));
+}
+
+function isProviderModelActive(name: string) {
+  return providerForm.value.provider === activeProviderName.value && name === activeModelName.value;
 }
 
 function handleDocumentPointerDown(event: Event) {
@@ -618,8 +776,6 @@ function resetTransientMessages() {
   llmMessage.value = "";
   providerError.value = "";
   providerMessage.value = "";
-  addModelError.value = "";
-  addModelMessage.value = "";
   accountError.value = "";
   accountMessage.value = "";
 }
@@ -629,9 +785,14 @@ function clearAuthState() {
   currentUser.value = "";
   requirePasswordChange.value = false;
   providers.value = {};
+  activeProviderName.value = "";
+  activeModelName.value = "";
   selectedProvider.value = "";
   selectedModel.value = "";
-  addModelForm.value.provider = "";
+  isCreatingProvider.value = false;
+  showNewProviderTypePicker.value = false;
+  providerModelOptions.value = [];
+  resetProviderEditor();
   closeDropdown();
   resetTransientMessages();
 }
@@ -657,6 +818,21 @@ watch(selectedProvider, (provider) => {
   }
 });
 
+watch(
+  () => [providerForm.value.type, providerForm.value.baseUrl, providerForm.value.apiKey],
+  () => {
+    if (isCreatingProvider.value) {
+      providerModelOptions.value = [];
+    }
+  }
+);
+
+watch(pendingProviderModelAdds, (models) => {
+  if (!isCreatingProvider.value && models.length !== 1) {
+    providerForm.value.setActive = false;
+  }
+});
+
 watch(llmError, (message) => {
   if (!message) return;
   showLlmToast(message, "error", "模型配置");
@@ -675,16 +851,6 @@ watch(providerError, (message) => {
 watch(providerMessage, (message) => {
   if (!message) return;
   showLlmToast(message, "success", "接入平台");
-});
-
-watch(addModelError, (message) => {
-  if (!message) return;
-  showLlmToast(message, "error", "添加模型");
-});
-
-watch(addModelMessage, (message) => {
-  if (!message) return;
-  showLlmToast(message, "success", "添加模型");
 });
 
 watch(accountError, (message) => {
@@ -733,6 +899,8 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
 
 function applyLlmConfig(data: LlmConfigResponse) {
   providers.value = data.providers ?? {};
+  activeProviderName.value = data.active_provider || "";
+  activeModelName.value = data.active_model || "";
   const all = Object.keys(providers.value);
   const fallbackProvider = all[0] ?? "";
   selectedProvider.value = data.active_provider || fallbackProvider;
@@ -742,8 +910,14 @@ function applyLlmConfig(data: LlmConfigResponse) {
     ? data.active_model
     : (models[0] ?? "");
 
-  if (!addModelForm.value.provider && selectedProvider.value) {
-    addModelForm.value.provider = selectedProvider.value;
+  if (!providerForm.value.provider && selectedProvider.value) {
+    selectManagedProvider(selectedProvider.value);
+  } else if (!isCreatingProvider.value && providerForm.value.provider) {
+    const config = providers.value[providerForm.value.provider];
+    if (config) {
+      providerForm.value.type = config.type || "openai";
+      providerForm.value.baseUrl = config.base_url || "";
+    }
   }
 }
 
@@ -838,70 +1012,216 @@ async function handleUpdateLlm() {
   }
 }
 
-async function handleAddProvider() {
+async function handleFetchProviderModels() {
   providerError.value = "";
   providerMessage.value = "";
 
-  const models = parseModelsText(providerForm.value.modelsText);
-  if (!models.length) {
-    providerError.value = "至少需要一个模型";
+  providerModelsLoading.value = true;
+  try {
+    if (isCreatingProvider.value) {
+      if (!canFetchProviderModels.value) {
+        providerError.value = "请先填写 API 类型、Base URL 和 API Key";
+        return;
+      }
+
+      const data = await requestJson<DiscoverModelsResponse>("/discover_llm_models", {
+        method: "POST",
+        body: JSON.stringify({
+          type: providerForm.value.type,
+          base_url: providerForm.value.baseUrl,
+          api_key: providerForm.value.apiKey,
+        }),
+      });
+      providerModelOptions.value = data.models.map((name) => ({
+        name,
+        enabled: false,
+        existing: false,
+      }));
+      providerMessage.value = `已获取 ${data.models.length} 个模型`;
+      return;
+    }
+
+    if (!providerForm.value.provider) {
+      providerError.value = "请先选择 Provider";
+      return;
+    }
+
+    const data = await requestJson<DiscoverProviderModelsResponse>("/discover_provider_models", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: providerForm.value.provider,
+      }),
+    });
+
+    const configured = new Set(data.configured_models);
+    const mergedModels = [...data.models];
+    for (const name of data.configured_models) {
+      if (!mergedModels.includes(name)) {
+        mergedModels.push(name);
+      }
+    }
+
+    providerModelOptions.value = mergedModels.map((name) => ({
+      name,
+      enabled: configured.has(name),
+      existing: configured.has(name),
+    }));
+    providerMessage.value = `已获取 ${mergedModels.length} 个模型`;
+  } catch (error: unknown) {
+    providerModelOptions.value = [];
+    providerError.value = error instanceof Error ? error.message : "获取模型列表失败";
+  } finally {
+    providerModelsLoading.value = false;
+  }
+}
+
+async function handleSaveProviderConfig() {
+  providerError.value = "";
+  providerMessage.value = "";
+
+  if (isCreatingProvider.value || !providerForm.value.provider) {
+    providerError.value = "请先选择已有 Provider";
     return;
   }
 
   providerSaving.value = true;
   try {
-    await requestJson<{ provider: string; model: string }>("/add_llm_provider", {
+    await requestJson<{ provider: string }>("/update_llm_provider", {
       method: "PUT",
       body: JSON.stringify({
         provider: providerForm.value.provider,
-        type: providerForm.value.type || "openai",
         base_url: providerForm.value.baseUrl,
         api_key: providerForm.value.apiKey,
-        models,
-        set_active: providerForm.value.setActive,
       }),
     });
-    providerMessage.value = "Provider 已新增";
-    providerForm.value.provider = "";
-    providerForm.value.type = "openai";
-    providerForm.value.baseUrl = "";
-    providerForm.value.apiKey = "";
-    providerForm.value.modelsText = "";
-    providerForm.value.setActive = false;
+    providerMessage.value = "平台信息已保存";
     await loadLlmConfig();
   } catch (error: unknown) {
-    providerError.value = error instanceof Error ? error.message : "新增 Provider 失败";
+    providerError.value = error instanceof Error ? error.message : "保存平台信息失败";
   } finally {
     providerSaving.value = false;
   }
 }
 
-async function handleAddModel() {
-  addModelError.value = "";
-  addModelMessage.value = "";
-  if (!addModelForm.value.provider || !addModelForm.value.model) {
-    addModelError.value = "Provider 和模型名都不能为空";
+async function handleDeleteProvider(name: string) {
+  if (!name || name === activeProviderName.value || providerDeletingName.value) return;
+
+  providerError.value = "";
+  providerMessage.value = "";
+  providerDeletingName.value = name;
+
+  try {
+    if (providerForm.value.provider === name) {
+      isCreatingProvider.value = false;
+      resetProviderEditor();
+    }
+
+    await requestJson<{ provider: string }>("/delete_llm_provider", {
+      method: "DELETE",
+      body: JSON.stringify({
+        provider: name,
+      }),
+    });
+
+    providerMessage.value = "Provider 已删除";
+    await loadLlmConfig();
+  } catch (error: unknown) {
+    providerError.value = error instanceof Error ? error.message : "删除 Provider 失败";
+  } finally {
+    providerDeletingName.value = "";
+  }
+}
+
+async function handleSaveProviderModels() {
+  providerError.value = "";
+  providerMessage.value = "";
+
+  if (isCreatingProvider.value) {
+    const models = selectedProviderModels.value.slice();
+    if (!models.length) {
+      providerError.value = "请先开启至少一个模型";
+      return;
+    }
+
+    providerSaving.value = true;
+    try {
+      await requestJson<{ provider: string; model: string }>("/add_llm_provider", {
+        method: "PUT",
+        body: JSON.stringify({
+          provider: providerForm.value.provider,
+          type: providerForm.value.type || "openai",
+          base_url: providerForm.value.baseUrl,
+          api_key: providerForm.value.apiKey,
+          models,
+          set_active: providerForm.value.setActive,
+        }),
+      });
+      providerMessage.value = "Provider 已新增";
+      isCreatingProvider.value = false;
+      showNewProviderTypePicker.value = false;
+      await loadLlmConfig();
+      if (providerForm.value.provider) {
+        selectManagedProvider(providerForm.value.provider);
+      }
+    } catch (error: unknown) {
+      providerError.value = error instanceof Error ? error.message : "新增 Provider 失败";
+    } finally {
+      providerSaving.value = false;
+    }
     return;
   }
 
-  addModelSaving.value = true;
+  if (!providerForm.value.provider) {
+    providerError.value = "请先选择 Provider";
+    return;
+  }
+
+  const modelsToAdd = pendingProviderModelAdds.value.slice();
+  const modelsToDelete = pendingProviderModelDeletes.value.slice();
+  if (!modelsToAdd.length && !modelsToDelete.length) {
+    providerError.value = "当前没有需要保存的模型变更";
+    return;
+  }
+
+  if (providerForm.value.setActive && modelsToAdd.length > 1) {
+    providerError.value = "设为默认模型时只能勾选一个新增模型";
+    return;
+  }
+
+  providerSaving.value = true;
   try {
-    await requestJson<{ provider: string; model: string }>("/add_llm_model", {
-      method: "PUT",
-      body: JSON.stringify({
-        provider: addModelForm.value.provider,
-        model: addModelForm.value.model,
-        set_active: addModelForm.value.setActive,
-      }),
-    });
-    addModelMessage.value = "模型已新增";
-    addModelForm.value.model = "";
-    addModelForm.value.setActive = false;
+    for (const [index, model] of modelsToAdd.entries()) {
+      await requestJson<{ provider: string; model: string }>("/add_llm_model", {
+        method: "PUT",
+        body: JSON.stringify({
+          provider: providerForm.value.provider,
+          model,
+          set_active: providerForm.value.setActive && index === 0,
+        }),
+      });
+    }
+
+    for (const model of modelsToDelete) {
+      await requestJson<{ provider: string; deleted_model: string }>("/delete_llm_model", {
+        method: "DELETE",
+        body: JSON.stringify({
+          provider: providerForm.value.provider,
+          model,
+        }),
+      });
+    }
+
+    const summary: string[] = [];
+    if (modelsToAdd.length) summary.push(`新增 ${modelsToAdd.length} 个`);
+    if (modelsToDelete.length) summary.push(`删除 ${modelsToDelete.length} 个`);
+    providerMessage.value = `模型设置已保存：${summary.join("，")}`;
+    providerForm.value.setActive = false;
     await loadLlmConfig();
+    await handleFetchProviderModels();
   } catch (error: unknown) {
-    addModelError.value = error instanceof Error ? error.message : "新增模型失败";
+    providerError.value = error instanceof Error ? error.message : "保存模型设置失败";
   } finally {
-    addModelSaving.value = false;
+    providerSaving.value = false;
   }
 }
 
@@ -957,7 +1277,7 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 /* 基础设定 - 纯净的米纸背景 */
-.settings-page {
+html, body {
   min-height: 100vh;
   background: #e8e6e1;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -970,7 +1290,7 @@ onBeforeUnmount(() => {
   background: #fafaf7;
   width: min(95%, 1200px);
   margin: 40px auto;
-  min-height: calc(100vh - 80px);
+  height: calc(100vh - 80px);
   border-radius: 3px;
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
   overflow: hidden;
@@ -1294,6 +1614,427 @@ onBeforeUnmount(() => {
 .textarea-input:focus {
   background: rgba(139, 115, 85, 0.04);
   box-shadow: 0 0 0 2px rgba(139, 115, 85, 0.1);
+}
+
+.provider-models-box {
+  height: 240px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.025);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.provider-models-box.empty {
+  display: flex;
+  align-items: center;
+}
+
+.provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row.single-column {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.provider-console {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.provider-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.provider-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.provider-add-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(139, 115, 85, 0.1);
+  color: #5c4b38;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.provider-add-btn:hover {
+  background: rgba(139, 115, 85, 0.16);
+  transform: translateY(-1px);
+}
+
+.provider-type-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.provider-type-title {
+  color: #7a7a70;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.provider-type-option {
+  border: none;
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: rgba(139, 115, 85, 0.08);
+  color: #4f4232;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.provider-type-option:hover {
+  background: rgba(139, 115, 85, 0.14);
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(460px, calc(100vh - 320px));
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 115, 85, 0.35) transparent;
+}
+
+.provider-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.provider-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.provider-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(139, 115, 85, 0.28);
+}
+
+.provider-list-row {
+  position: relative;
+}
+
+.provider-list-row:hover .provider-delete-btn,
+.provider-list-row:focus-within .provider-delete-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.provider-list-item {
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 48px 14px 16px;
+  background: rgba(0, 0, 0, 0.03);
+  color: #4a4a45;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.provider-list-item:hover {
+  background: rgba(139, 115, 85, 0.08);
+  transform: translateY(-1px);
+}
+
+.provider-list-item.active {
+  background: rgba(139, 115, 85, 0.14);
+  color: #2c2c29;
+}
+
+.provider-list-item span {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.provider-list-item small {
+  color: #8b8b80;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.provider-delete-btn {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(201, 63, 63, 0.08);
+  color: #c64a4a;
+  cursor: pointer;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.provider-delete-btn:hover:not(:disabled) {
+  background: rgba(201, 63, 63, 0.16);
+  color: #a22929;
+}
+
+.provider-delete-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.provider-delete-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.provider-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 22px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.provider-config-panel,
+.provider-model-panel {
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.provider-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.provider-section-title {
+  margin: 6px 0 0;
+  color: #2c2c29;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.provider-type-pill {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(139, 115, 85, 0.12);
+  color: #6c563b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.form-actions.compact {
+  margin-top: 24px;
+}
+
+.provider-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(139, 115, 85, 0.06);
+  cursor: pointer;
+}
+
+.provider-model-row.locked {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.provider-model-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #5c4b38;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.provider-model-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #7a7a70;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.provider-model-badge.active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.provider-model-switch {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.provider-model-checkbox {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.provider-model-slider {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.14);
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+.provider-model-slider::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fafaf7;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  transition: transform 0.2s ease;
+}
+
+.provider-model-checkbox:checked + .provider-model-slider {
+  background: #8b7355;
+}
+
+.provider-model-checkbox:checked + .provider-model-slider::after {
+  transform: translateX(18px);
+}
+
+.provider-model-checkbox:focus-visible + .provider-model-slider {
+  outline: 2px solid rgba(139, 115, 85, 0.25);
+  outline-offset: 2px;
+}
+
+.provider-model-checkbox:disabled + .provider-model-slider {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.default-setting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 22px 0 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(139, 115, 85, 0.07);
+}
+
+.default-setting-card.disabled {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.default-setting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.default-setting-text {
+  margin: 0;
+  color: #5c4b38;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.default-setting-note {
+  flex-shrink: 0;
+  color: #8b8b80;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.default-setting-switch {
+  flex-shrink: 0;
+}
+
+.provider-models-placeholder {
+  margin: 0;
+  color: #8b8b80;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.provider-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 /* 自定义下拉 */
@@ -1680,6 +2421,7 @@ button.block {
     grid-template-columns: 1fr;
     margin: 20px auto;
     width: min(98%, 640px);
+    height: calc(100vh - 40px);
   }
   
   .sidebar {
@@ -1722,6 +2464,11 @@ button.block {
   
   .content {
     padding: 32px 28px;
+  }
+
+  .provider-console {
+    grid-template-columns: 1fr;
+    gap: 20px;
   }
   
   .row {
