@@ -19,10 +19,12 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from graph.graph import build_auth_app, build_guest_app
 from graph.state import AgentState
+from llm.client import create_provider_llm
 from llm.config.provider import get_config_list
 from user.update_name_pswd import update_username_and_password
 from utils.load_config import load_json_config, save_json_config
@@ -112,6 +114,14 @@ class DeleteProviderBody(BaseModel):
 
 class DeleteModelBody(BaseModel):
     provider: str
+    model: str
+
+
+class TestModelBody(BaseModel):
+    provider: str | None = None
+    type: str | None = "openai"
+    base_url: str | None = None
+    api_key: str | None = None
     model: str
 
 def _normalize_app_key(app_key: str) -> str:
@@ -481,6 +491,70 @@ async def _discover_openai_models(base_url: str, api_key: str) -> list[str]:
 
     return models
 
+
+def _extract_model_response_text(response: Any) -> str:
+    content = getattr(response, "content", response)
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    parts.append(text)
+                continue
+
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+
+        return "\n".join(parts).strip()
+
+    return str(content).strip()
+
+
+def _resolve_test_model_config(payload: TestModelBody) -> tuple[str, str, str, str, str]:
+    provider_name = str(payload.provider or "").strip()
+    provider_type = str(payload.type or "").strip().lower()
+    base_url = str(payload.base_url or "").strip()
+    api_key = str(payload.api_key or "").strip()
+    model_name = str(payload.model or "").strip()
+
+    if not model_name:
+        raise HTTPException(status_code=400, detail="model is required")
+
+    if provider_name:
+        data = load_json_config(PROVIDER_CONFIG_PATH)
+        providers = data.get("llm_providers")
+        if not isinstance(providers, dict) or provider_name not in providers:
+            raise HTTPException(status_code=400, detail="provider not found")
+
+        provider_conf = providers[provider_name]
+        if not isinstance(provider_conf, dict):
+            raise HTTPException(status_code=500, detail="invalid provider config")
+
+        if not provider_type:
+            provider_type = str(provider_conf.get("type") or "openai").strip().lower()
+        if not base_url:
+            base_url = str(provider_conf.get("base_url") or "").strip()
+        if not api_key:
+            api_key = str(provider_conf.get("api_key") or "").strip()
+    else:
+        provider_name = "临时配置"
+
+    if not provider_type:
+        provider_type = "openai"
+    if not base_url:
+        raise HTTPException(status_code=400, detail="base_url is required")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+
+    return provider_name, provider_type, base_url, api_key, model_name
+
 #更换llm_model
 @app.put("/update_llm")
 async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, str]:
@@ -558,6 +632,60 @@ async def llm_provider_types(request: Request) -> dict[str, Any]:
 
     return {
         "items": [item.to_dict() for item in get_config_list()],
+    }
+
+
+@app.post("/test_model")
+async def test_model(request: Request, payload: TestModelBody) -> dict[str, Any]:
+    await _require_login_token(request)
+
+    provider_name, provider_type, base_url, api_key, model_name = _resolve_test_model_config(payload)
+    logger.info(
+        f"test_model start: provider={provider_name}, type={provider_type}, model={model_name}, base_url={base_url}"
+    )
+
+    try:
+        model = create_provider_llm(
+            model_name=model_name,
+            provider_type=provider_type,
+            api_key=api_key,
+            base_url=base_url,
+            stream_usage=False,
+        )
+        response = await asyncio.wait_for(
+            model.ainvoke(
+                [
+                    HumanMessage(
+                        "这是一条模型连通性测试消息。"
+                        "请用简短中文回复“连接成功”，并附带当前模型名称。"
+                    )
+                ]
+            ),
+            timeout=30,
+        )
+    except asyncio.TimeoutError as error:
+        logger.info(
+            f"test_model timeout: provider={provider_name}, type={provider_type}, model={model_name}"
+        )
+        raise HTTPException(status_code=400, detail="模型测试超时") from error
+    except Exception as error:
+        logger.info(
+            f"test_model failed: provider={provider_name}, type={provider_type}, model={model_name}, error={error}"
+        )
+        raise HTTPException(status_code=400, detail=f"模型测试失败：{error}") from error
+
+    result = _extract_model_response_text(response)
+    if not result:
+        result = "模型已响应，但未返回可显示的文本结果"
+
+    logger.info(
+        f"test_model success: provider={provider_name}, type={provider_type}, model={model_name}, result={result}"
+    )
+    return {
+        "provider": provider_name,
+        "type": provider_type,
+        "model": model_name,
+        "result": result,
     }
 
 
