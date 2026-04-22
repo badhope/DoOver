@@ -539,9 +539,14 @@ import ErrorComponent from "../components/ErrorComponent.vue";
 
 const API_BASE_URL = "http://localhost:8000";
 
-const props = defineProps<{
-  routeAccount: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    routeAccount?: string;
+  }>(),
+  {
+    routeAccount: "",
+  }
+);
 
 const menuItems = [
   {
@@ -755,14 +760,6 @@ const singleManagedAddedModelName = computed(() =>
   canSetManagedModelActive.value ? pendingProviderModelAdds.value[0] : ""
 );
 
-function setRouteAccount(account: string) {
-  const normalized = encodeURIComponent(account);
-  const nextPath = `/${normalized}`;
-  if (window.location.pathname === nextPath) return;
-  window.history.replaceState({}, "", nextPath);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
 function toggleDropdown(name: string) {
   activeDropdown.value = activeDropdown.value === name ? "" : name;
 }
@@ -920,9 +917,7 @@ watch(
   () => props.routeAccount,
   (value) => {
     if (!isLoggedIn.value || !value) return;
-    if (currentUser.value && currentUser.value !== value) {
-      setRouteAccount(currentUser.value);
-    }
+    if (currentUser.value && currentUser.value !== value) return;
   }
 );
 
@@ -1075,9 +1070,6 @@ async function checkLoginStatus() {
     requirePasswordChange.value = Boolean(me.require_password_change);
     accountForm.value.username = me.user_name;
     accountForm.value.password = "";
-    if (props.routeAccount !== me.user_name) {
-      setRouteAccount(me.user_name);
-    }
     await Promise.all([loadProviderTypeCatalog(), loadLlmConfig()]);
   } catch {
     clearAuthState();
@@ -1102,7 +1094,6 @@ async function handleLogin() {
     requirePasswordChange.value = Boolean(result.require_password_change);
     accountForm.value.username = result.user_name;
     accountForm.value.password = "";
-    setRouteAccount(result.user_name);
     await Promise.all([loadProviderTypeCatalog(), loadLlmConfig()]);
   } catch (error: unknown) {
     loginError.value = error instanceof Error ? error.message : "登录失败";
@@ -1380,7 +1371,6 @@ async function handleUpdateAccount(forceMode = false) {
     accountMessage.value = forceMode ? "" : "账号密码已更新";
     currentUser.value = accountForm.value.username;
     requirePasswordChange.value = false;
-    setRouteAccount(accountForm.value.username);
     accountForm.value.password = "";
   } catch (error: unknown) {
     accountError.value = error instanceof Error ? error.message : "更新账号密码失败";
@@ -1403,36 +1393,64 @@ onBeforeUnmount(() => {
 </script>
 <style scoped>
 .settings-page {
-  --app-bg: #f5f5f6;
-  --shell-bg: #fbfbfc;
-  --surface: #ffffff;
-  --surface-muted: #f7f7f8;
-  --surface-soft: #f3f3f4;
-  --border: #e4e4e7;
-  --border-strong: #cfcfd4;
-  --text-primary: #111111;
-  --text-secondary: #66676c;
-  --text-muted: #92939a;
-  --accent: #1f1f21;
-  --accent-soft: #ececef;
-  --accent-hover: #e7e7ea;
-  --success: #1f8a53;
-  --success-soft: rgba(31, 138, 83, 0.1);
-  --danger: #d14343;
-  --danger-soft: rgba(209, 67, 67, 0.1);
-  --radius-shell: 12px;
-  --radius-panel: 10px;
-  --radius-control: 8px;
-  --focus-ring: 0 0 0 2px rgba(17, 17, 17, 0.08);
+  --md-sys-color-primary: #00639b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #cde5ff;
+  --md-sys-color-on-primary-container: #001d33;
+  --md-sys-color-secondary: #4f6075;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d2e4fc;
+  --md-sys-color-on-secondary-container: #0a1d2f;
+  --md-sys-color-tertiary: #63597c;
+  --md-sys-color-tertiary-container: #e9ddff;
+  --md-sys-color-surface: #f8f9ff;
+  --md-sys-color-surface-container-low: #f2f4fa;
+  --md-sys-color-surface-container: #eceef4;
+  --md-sys-color-surface-container-high: #e6e8ee;
+  --md-sys-color-surface-container-highest: #dfe2e8;
+  --md-sys-color-on-surface: #191c20;
+  --md-sys-color-on-surface-variant: #414852;
+  --md-sys-color-outline: #717781;
+  --md-sys-color-outline-variant: #c1c7d1;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --app-bg: var(--md-sys-color-surface);
+  --shell-bg: var(--md-sys-color-surface-container-low);
+  --surface: var(--md-sys-color-surface-container);
+  --surface-muted: var(--md-sys-color-surface-container-high);
+  --surface-soft: var(--md-sys-color-surface-container-highest);
+  --border: var(--md-sys-color-outline-variant);
+  --border-strong: var(--md-sys-color-outline);
+  --text-primary: var(--md-sys-color-on-surface);
+  --text-secondary: var(--md-sys-color-on-surface-variant);
+  --text-muted: #5a626d;
+  --accent: var(--md-sys-color-primary);
+  --accent-soft: var(--md-sys-color-primary-container);
+  --accent-hover: #bbdaff;
+  --success: #006e26;
+  --success-soft: #c4efba;
+  --danger: var(--md-sys-color-error);
+  --danger-soft: var(--md-sys-color-error-container);
+  --radius-shell: 28px;
+  --radius-panel: 24px;
+  --radius-control: 16px;
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: rgba(65, 72, 82, 0.34);
+  --scrollbar-thumb-hover: rgba(65, 72, 82, 0.5);
+  --scrollbar-track: transparent;
   min-height: 100vh;
-  background: var(--app-bg);
+  background:
+    radial-gradient(circle at top right, rgba(0, 99, 155, 0.08), transparent 48%),
+    var(--app-bg);
 }
 
 /* 基础设定 - 纯净的米纸背景 */
 html, body {
   min-height: 100vh;
   background: var(--app-bg);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: "Roboto", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--text-primary);
   font-size: 16px;
   line-height: 1.7;
@@ -1463,7 +1481,7 @@ html, body {
   padding: 44px 0 36px;
   display: flex;
   flex-direction: column;
-  background: var(--surface-muted);
+  background: var(--surface);
   border-right: 1px solid var(--border);
   min-height: 100vh;
 }
@@ -1489,42 +1507,33 @@ html, body {
 
 .nav-item {
   text-align: left;
-  padding: 14px 18px 14px 22px;
+  padding: 12px 18px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
   position: relative;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
 .nav-item:hover {
   color: var(--text-primary);
-  background: var(--accent-soft);
+  background: rgba(0, 99, 155, 0.08);
 }
 
 /* 激活状态：左侧黑色竖线 */
 .nav-item.active {
-  color: var(--text-primary);
+  color: var(--md-sys-color-on-primary-container);
   font-weight: 700;
-  background: transparent;
+  background: var(--accent-soft);
 }
 
 .nav-item.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 28px;
-  border-radius: 2px;
-  transform: translateY(-50%);
-  background: var(--accent);
-  opacity: 1;
+  display: none;
 }
 
 .sidebar-footer {
@@ -1598,9 +1607,9 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--surface);
+  background: var(--surface-soft);
   color: var(--text-secondary);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
@@ -1613,7 +1622,7 @@ html, body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--accent);
 }
 
 
@@ -1697,8 +1706,8 @@ html, body {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
+  text-transform: none;
+  letter-spacing: 0.3px;
 
 }
 
@@ -1712,27 +1721,30 @@ html, body {
 /* 输入框 - 极简底边，hover时显现 */
 .text-input {
   width: 100%;
-  min-height: 48px;
-  padding: 11px 14px;
-  border: 1px solid var(--border-strong);
+  min-height: 56px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 15px;
   color: var(--text-primary);
-  background: var(--surface);
+  background: var(--surface-soft);
   transition: all 0.2s;
   box-sizing: border-box;
   font-family: inherit;
-  box-shadow: none;
 }
 
 .text-input:hover {
-  border-color: #b9bac0;
+  border-color: var(--border-strong);
+  background: var(--surface);
 }
 
 .text-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: var(--focus-ring);
+  border-width: 2px;
+  padding: 13px 15px;
+  outline: 2px solid rgba(0, 99, 155, 0.2);
+  outline-offset: 1px;
   background: var(--surface);
 }
 
@@ -1743,21 +1755,23 @@ html, body {
   line-height: 1.6;
   padding: 16px;
   border-radius: var(--radius-control);
-  background: var(--surface);
+  background: var(--surface-soft);
 
   font-size: 14px;
   border: 1px solid var(--border);
-  box-shadow: none;
 }
 
 .textarea-input:hover {
-  border-color: #b9bac0;
+  border-color: var(--border-strong);
+  background: var(--surface);
 }
 
 .textarea-input:focus {
   background: var(--surface);
   border-color: var(--accent);
-  box-shadow: var(--focus-ring);
+  border-width: 2px;
+  outline: 2px solid rgba(0, 99, 155, 0.2);
+  outline-offset: 1px;
 }
 
 .provider-models-box {
@@ -1769,8 +1783,6 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
 }
 
 .provider-models-box.empty {
@@ -1803,7 +1815,7 @@ html, body {
   z-index: 8;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
   overflow: visible;
   min-height: 0;
 }
@@ -1815,7 +1827,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  padding: 20px 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1840,9 +1852,9 @@ html, body {
   min-width: 26px;
   height: 24px;
   padding: 0 8px;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  color: var(--text-secondary);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--md-sys-color-on-primary-container);
   font-size: 12px;
   font-weight: 700;
 }
@@ -1862,7 +1874,7 @@ html, body {
   padding: 22px 24px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
 }
 
 .provider-summary-copy {
@@ -1919,11 +1931,12 @@ html, body {
 }
 
 .provider-add-btn {
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-control);
-  padding: 8px 14px;
-  background: transparent;
-  color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 18px;
+  background: var(--accent-soft);
+  color: var(--md-sys-color-on-primary-container);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -1934,9 +1947,7 @@ html, body {
 }
 
 .provider-add-btn:hover {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(31, 31, 33, 0.12);
+  background: #bfdcff;
 }
 .provider-add-btn:disabled {
   opacity: 0.55;
@@ -1965,10 +1976,9 @@ html, body {
   gap: 0;
   padding: 8px;
   overflow-y: auto;
-  border-radius: 18px;
+  border-radius: var(--radius-panel);
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
 }
 
 .provider-type-panel::before {
@@ -1987,7 +1997,7 @@ html, body {
 .provider-type-option {
   width: 100%;
   border: none;
-  border-radius: 14px;
+  border-radius: 999px;
   padding: 12px 14px;
   background: transparent;
   color: var(--text-primary);
@@ -2002,7 +2012,7 @@ html, body {
 }
 
 .provider-type-option:hover {
-  background: #f4f7fb;
+  background: rgba(0, 99, 155, 0.08);
 }
 
 .provider-type-option-icon {
@@ -2064,21 +2074,6 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 10px 14px 14px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(31, 31, 33, 0.24) transparent;
-}
-
-.provider-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.provider-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.provider-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(31, 31, 33, 0.2);
 }
 
 .provider-list-row {
@@ -2094,7 +2089,7 @@ html, body {
 .provider-list-item {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
+  border-radius: 18px;
   padding: 14px 48px 14px 14px;
   background: var(--surface);
   color: var(--text-secondary);
@@ -2112,8 +2107,8 @@ html, body {
 
 .provider-list-item.active {
   background: var(--accent-soft);
-  border-color: #bdbec4;
-  color: var(--text-primary);
+  border-color: transparent;
+  color: var(--md-sys-color-on-primary-container);
 }
 
 .provider-list-icon {
@@ -2242,9 +2237,9 @@ html, body {
 .provider-type-pill {
   flex-shrink: 0;
   padding: 6px 12px;
-  border-radius: var(--radius-control);
-  background: rgba(31, 31, 33, 0.08);
-  color: var(--text-secondary);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--md-sys-color-on-primary-container);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -2300,14 +2295,14 @@ html, body {
   justify-content: space-between;
   gap: 16px;
   padding: 10px 12px;
-  border-radius: var(--radius-control);
+  border-radius: 14px;
   background: var(--surface-muted);
   border: 1px solid var(--border);
   cursor: pointer;
 }
 
 .provider-model-row.locked {
-  background: var(--surface-soft);
+  background: var(--surface-muted);
 }
 
 .provider-model-name {
@@ -2326,7 +2321,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-secondary);
@@ -2337,9 +2332,9 @@ html, body {
 
 /* 使用中 */
 .provider-model-badge.active {
-  background: rgba(31, 31, 33, 0.08);
-  color: var(--accent);
-  border: 1px solid rgba(31, 31, 33, 0.12);
+  background: var(--accent-soft);
+  color: var(--md-sys-color-on-primary-container);
+  border: 1px solid transparent;
   font-weight: 700;
 }
 
@@ -2363,9 +2358,10 @@ html, body {
   width: 100%;
   height: 100%;
   border-radius: 999px;
-  background: #9d9ea3;
+  background: #aab0ba;
   transition: background-color 0.2s ease;
   position: relative;
+  border: 1px solid transparent;
 }
 
 .provider-model-slider::after {
@@ -2376,8 +2372,7 @@ html, body {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--shell-bg);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  background: #ffffff;
   transition: transform 0.2s ease;
 }
 
@@ -2390,7 +2385,7 @@ html, body {
 }
 
 .provider-model-checkbox:focus-visible + .provider-model-slider {
-  outline: 2px solid rgba(31, 31, 33, 0.18);
+  outline: 2px solid rgba(0, 99, 155, 0.3);
   outline-offset: 2px;
 }
 
@@ -2412,7 +2407,7 @@ html, body {
 }
 
 .default-setting-card.disabled {
-  background: rgba(0, 0, 0, 0.035);
+  background: var(--surface-soft);
 }
 
 .default-setting-copy {
@@ -2472,11 +2467,11 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 56px;
   padding: 12px 16px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--surface);
-  box-shadow: none;
+  background: var(--surface-soft);
 }
 
 .select-trigger::after {
@@ -2498,8 +2493,10 @@ html, body {
 .select-trigger:focus-visible {
   outline: none;
   border-color: var(--accent);
+  border-width: 2px;
   background-color: var(--surface);
-  box-shadow: var(--focus-ring);
+  outline: 2px solid rgba(0, 99, 155, 0.2);
+  outline-offset: 1px;
 }
 
 .select-trigger:disabled {
@@ -2515,7 +2512,7 @@ html, body {
   max-height: 240px;
   overflow-y: auto;
   padding: 6px;
-  border-radius: var(--radius-control);
+  border-radius: 18px;
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -2523,7 +2520,7 @@ html, body {
 .select-option {
   width: 100%;
   border: none;
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   background: transparent;
   color: var(--text-primary);
   font-size: 15px;
@@ -2534,13 +2531,80 @@ html, body {
 }
 
 .select-option:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 99, 155, 0.08);
 }
 
 .select-option.selected {
-  background: rgba(31, 31, 33, 0.1);
-  color: var(--text-primary);
+  background: var(--accent-soft);
+  color: var(--md-sys-color-on-primary-container);
   font-weight: 600;
+}
+
+.content,
+.provider-models-box,
+.provider-list,
+.select-menu,
+.provider-type-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.content::-webkit-scrollbar,
+.provider-models-box::-webkit-scrollbar,
+.provider-list::-webkit-scrollbar,
+.select-menu::-webkit-scrollbar,
+.provider-type-panel::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+.content::-webkit-scrollbar-track,
+.provider-models-box::-webkit-scrollbar-track,
+.provider-list::-webkit-scrollbar-track,
+.select-menu::-webkit-scrollbar-track,
+.provider-type-panel::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.content::-webkit-scrollbar-thumb,
+.provider-models-box::-webkit-scrollbar-thumb,
+.provider-list::-webkit-scrollbar-thumb,
+.select-menu::-webkit-scrollbar-thumb,
+.provider-type-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.content::-webkit-scrollbar-thumb:hover,
+.provider-models-box::-webkit-scrollbar-thumb:hover,
+.provider-list::-webkit-scrollbar-thumb:hover,
+.select-menu::-webkit-scrollbar-thumb:hover,
+.provider-type-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+@media (min-width: 969px) {
+  .settings-page {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .page-shell {
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .content {
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
 }
 
 /* 复选框 - 极简 */
@@ -2569,7 +2633,7 @@ html, body {
 .form-actions {
   display: flex;
   gap: 12px;
-  margin-top: 40px;
+  margin-top: 32px;
   padding-top: 0; /* 移除 border-top 对应的 padding */
   border-top: none;
   align-items: center;
@@ -2578,54 +2642,59 @@ html, body {
 .primary-btn,
 .ghost-btn,
 .danger-btn {
+  min-height: 40px;
   padding: 10px 24px;
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-  border: 1px solid var(--border-strong);
+  border: 1px solid transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.1px;
   font-family: inherit;
-  background: var(--surface);
-  color: var(--text-primary);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+}
+
+.primary-btn {
+  background: var(--accent);
+  color: var(--md-sys-color-on-primary);
 }
 
 .primary-btn:hover:not(:disabled) {
   background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  color: var(--md-sys-color-on-primary);
 }
 
 .ghost-btn {
-  background: var(--surface);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--border-strong);
 }
 
 .ghost-btn:hover:not(:disabled) {
-  background: var(--accent-soft);
-  color: var(--text-primary);
+  background: rgba(0, 99, 155, 0.08);
+  color: var(--accent);
 }
 
 .danger-btn {
-  background: #fff;
-  border-color: rgba(209, 67, 67, 0.28);
-  color: var(--danger);
+  background: var(--md-sys-color-error-container);
+  border-color: transparent;
+  color: var(--md-sys-color-on-error-container);
   margin-left: auto;
 }
 
 .danger-btn:hover:not(:disabled) {
-  background: var(--danger);
-  color: white;
-  border-color: var(--danger);
+  background: #f5c7c2;
+  color: var(--md-sys-color-on-error-container);
 }
 
 button:disabled {
-  opacity: 0.4;
+  opacity: 0.38;
   cursor: not-allowed;
   transform: none !important;
 }
@@ -2636,13 +2705,14 @@ button.block {
 
 /* 消息提示 - 背景色块，无左边框 */
 .error-text {
-  color: #92400e;
+  color: var(--md-sys-color-on-error-container);
   font-size: 14px;
   margin: 0;
   padding: 16px;
-  background: rgba(251, 191, 36, 0.08);
-  border-radius: 8px;
+  background: var(--md-sys-color-error-container);
+  border-radius: var(--radius-control);
   border-left: none; /* 移除左边框 */
+  border: 1px solid rgba(186, 26, 26, 0.2);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -2662,7 +2732,7 @@ button.block {
   padding: 16px;
   background: var(--success-soft);
   border-radius: var(--radius-control);
-  border: 1px solid rgba(31, 138, 83, 0.18);
+  border: 1px solid rgba(0, 110, 38, 0.24);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -2690,11 +2760,11 @@ button.block {
   min-width: 260px;
   padding: 12px 18px;
   border-radius: var(--radius-control);
-  border: 1px solid rgba(31, 138, 83, 0.22);
+  border: 1px solid rgba(0, 110, 38, 0.24);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.45;
-  background: #f3fbf6;
+  background: var(--success-soft);
   color: var(--success);
 }
 
@@ -2723,9 +2793,9 @@ button.block {
   border-radius: var(--radius-control);
   margin: 24px 0;
   font-size: 14px;
-  background: rgba(251, 191, 36, 0.1);
-  color: #854d0e;
-  border: 1px solid rgba(234, 179, 8, 0.2);
+  background: #ffeec2;
+  color: #4f3722;
+  border: 1px solid #dbc38d;
   position: relative;
 }
 
@@ -2759,7 +2829,7 @@ button.block {
 .spinner {
   width: 28px;
   height: 28px;
-  border: 2px solid rgba(0, 0, 0, 0.05);
+  border: 2px solid rgba(0, 99, 155, 0.18);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -2773,7 +2843,7 @@ button.block {
 .force-mask {
   position: fixed;
   inset: 0;
-  background: rgba(40, 38, 35, 0.6);
+  background: rgba(25, 28, 32, 0.52);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2835,8 +2905,8 @@ button.block {
   }
   
   .sidebar {
-    background: transparent; /* 移动端也无线框 */
-    border-bottom: none; /* 确保无下边线 */
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
     padding: 32px 24px;
   }
   
@@ -2855,13 +2925,13 @@ button.block {
     margin: 0;
     white-space: nowrap;
     font-size: 14px;
-    padding: 8px 14px;
-    background: rgba(0, 0, 0, 0.03);
-    border-radius: 20px;
+    padding: 10px 16px;
+    background: transparent;
+    border-radius: 999px;
   }
   
   .nav-item.active {
-    background: rgba(31, 31, 33, 0.08);
+    background: var(--accent-soft);
   }
   
   .nav-item.active::before {

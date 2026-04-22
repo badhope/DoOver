@@ -394,6 +394,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .interaction-page {
+  margin: 0;
+/* background-image: url(./assets/background4.png); */
+  background-size: cover;              /* 关键：铺满屏幕，必要时裁切 */
+  background-repeat: no-repeat;        /* 不重复 */
+  background-position: center center;  /* 居中 */
+  background-attachment: fixed;        /* 可选：滚动时固定背景（移动端可能不稳定） */
+  background-color: #cacaca61;           /* 图片加载前的兜底背景色 */
+}
+.interaction-page {
   min-height: 100vh;
   padding: 42px 16px 56px;
   box-sizing: border-box;

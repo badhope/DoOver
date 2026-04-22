@@ -1,9 +1,10 @@
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
-background-image: url(./assets/background4.png);
-  background-size: cover;              /* 关键：铺满屏幕，必要时裁切 */
-  background-repeat: no-repeat;        /* 不重复 */
-  background-position: center center;  /* 居中 */
-  background-attachment: fixed;        /* 可选：滚动时固定背景（移动端可能不稳定） */
-  background-color: #cacaca61;           /* 图片加载前的兜底背景色 */
+  background-color: #f8f9ff;
 }
