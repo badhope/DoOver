@@ -26,9 +26,6 @@
             <h2 class="page-title">{{ currentMenuItem?.label }}</h2>
             <p class="page-subtitle">{{ currentMenuItem?.desc }}</p>
           </div>
-          <span class="status-pill" :class="{ online: isLoggedIn && !checkingAuth }">
-            {{ checkingAuth ? "检测中..." : isLoggedIn ? "已登录" : "未登录" }}
-          </span>
         </header>
 
         <section v-if="checkingAuth" class="card empty-card">
@@ -1619,15 +1616,6 @@ html, body {
   background: var(--text-muted);
 }
 
-.status-pill.online {
-  background: var(--surface);
-  color: var(--success);
-}
-
-.status-pill.online::before {
-  background: var(--success);
-  box-shadow: 0 0 0 2px rgba(31, 138, 83, 0.14);
-}
 
 /* 卡片 - 纯留白分隔 */
 .card {
@@ -1931,33 +1919,34 @@ html, body {
 }
 
 .provider-add-btn {
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-control);
-  padding: 8px 12px;
-  background: #eef6ff;
-  color: #2563eb;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--accent);
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .provider-add-btn:hover {
-  background: #e0efff;
-  border-color: #bfdbfe;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(31, 31, 33, 0.12);
 }
-
 .provider-add-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .provider-add-plus {
-  font-size: 18px;
+  font-weight: 400;
+  font-size: 20px;
   line-height: 1;
-  font-weight: 600;
 }
 
 .provider-add-menu.open .provider-add-caret {
@@ -2346,9 +2335,12 @@ html, body {
   letter-spacing: 0.4px;
 }
 
+/* 使用中 */
 .provider-model-badge.active {
-  background: var(--success-soft);
-  color: var(--success);
+  background: rgba(31, 31, 33, 0.08);
+  color: var(--accent);
+  border: 1px solid rgba(31, 31, 33, 0.12);
+  font-weight: 700;
 }
 
 .provider-model-switch {

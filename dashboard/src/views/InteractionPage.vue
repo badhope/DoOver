@@ -268,7 +268,7 @@ const nodeNameToReadable = (msg) => {
     role_node: "角色推演节点",
     analyze_interaction_node: "角色互动分析节点",
     tool_node2: "角色互动工具节点",
-    wait_for_interaction_from_analyze: "等待角色互动节点",
+    wait_for_interaction_node: "等待角色互动节点",
     continue_next_node: "继续推理节点",
     tool_node3: "继续推理工具节点",
     wait_for_interaction_from_continue: "继续推理等待互动节点",

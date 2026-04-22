@@ -1,6 +1,6 @@
 body {
   margin: 0;
-/*   background-image: url(./assets/background3.png); */
+background-image: url(./assets/background4.png);
   background-size: cover;              /* 关键：铺满屏幕，必要时裁切 */
   background-repeat: no-repeat;        /* 不重复 */
   background-position: center center;  /* 居中 */

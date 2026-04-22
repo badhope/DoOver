@@ -41,7 +41,7 @@ def build_guest_app():
     guest.add_node("create_role_node", create_role_node)
     guest.add_node("analyze_interaction_node",analyze_interaction_node)
     guest.add_node("tool_node2", ToolNode(tools=[interact_with_role]))
-    guest.add_node("wait_for_interaction_from_analyze", wait_for_interaction_node)
+    guest.add_node("wait_for_interaction_node", wait_for_interaction_node)
     guest.add_node("continue_next_node", continue_next_node)
     guest.set_entry_point("init_world_params")
 
@@ -84,11 +84,11 @@ def build_guest_app():
         "tool_node2",
         should_wait_for_role_interaction,
         {
-            "wait": "wait_for_interaction_from_analyze",
+            "wait": "wait_for_interaction_node",
             "continue": "analyze_interaction_node",
         },
     )
-    guest.add_edge("wait_for_interaction_from_analyze", "analyze_interaction_node")
+    guest.add_edge("wait_for_interaction_node", "analyze_interaction_node")
     guest.add_conditional_edges(
         "continue_next_node",
         should_continue,
@@ -134,7 +134,7 @@ def build_auth_app():
     auth.add_node("create_role_node", create_role_node)
     auth.add_node("analyze_interaction_node",analyze_interaction_node)
     auth.add_node("tool_node2", ToolNode(tools=[interact_with_role]))
-    auth.add_node("wait_for_interaction_from_analyze", wait_for_interaction_node)
+    auth.add_node("wait_for_interaction_node", wait_for_interaction_node)
     auth.add_node("continue_next_node", continue_next_node)
     auth.add_node("tool_node3", ToolNode(tools=[interact_with_role]))
     auth.add_node("wait_for_interaction_from_continue", wait_for_interaction_node)
@@ -179,11 +179,11 @@ def build_auth_app():
         "tool_node2",
         should_wait_for_role_interaction,
         {
-            "wait": "wait_for_interaction_from_analyze",
+            "wait": "wait_for_interaction_node",
             "continue": "analyze_interaction_node",
         },
     )
-    auth.add_edge("wait_for_interaction_from_analyze", "analyze_interaction_node")
+    auth.add_edge("wait_for_interaction_node", "analyze_interaction_node")
     auth.add_conditional_edges(
         "continue_next_node",
         should_continue,

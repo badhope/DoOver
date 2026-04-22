@@ -12,6 +12,7 @@ from tools.registry import active_tools,interact_with_role
 from tools.interaction import ask_user_choice_impl
 from utils.ip_utils import get_country_by_ip
 from utils.logger import logger
+from utils.retry import run_async_with_retry, run_sync_with_retry
 from utils.websocket import emit_ws_event, receive_websocket_event
 from datetime import datetime
 #登录成功节点
@@ -22,8 +23,8 @@ async def login_success_node(state: AgentState) -> AgentState:
 
 # 初始化世界参数节点
 async def init_world_params(state: AgentState) -> AgentState:
-    logger.print(f"role_node_msg:{"小妹妹"} -> {"早上好"}")
-    logger.print(f"role_node_msg:{"小哥哥"} -> {"晚安"}")
+    logger.print("role_node_msg:小妹妹 -> 早上好")
+    logger.print("role_node_msg:小哥哥 -> 晚安")
     logger.info("init_world_params")
     logger.print("node:" + "init_world_params")
     time = datetime.now().strftime("%Y-%m-%d")
@@ -66,23 +67,23 @@ async def background_node(state: AgentState) -> dict[str, Any]:
     content.append(HumanMessage(raw_input_text))
     model = get_model()
 
-    final_text = ""
-    response: Any = None
-    try:
+    async def _stream_background() -> str:
+        final_text = ""
         async for chunk in model.astream(content):
             chunk = cast(Any, chunk)
             text = chunk.content if isinstance(getattr(chunk, "content", None), str) else ""
             if text:
                 logger.print("background_node_msg:" + text, end="")
                 final_text += text
-            if response is None:
-                response = chunk
-            else:
-                response = response + chunk
-    except Exception as e:
-        logger.error(e)
+        return final_text
+
+    final_text = await run_async_with_retry(
+        "background_node.astream",
+        _stream_background,
+        fallback="",
+    )
     return {
-        "structured_scenario": final_text
+        "structured_scenario": final_text or ""
     }
 
 # 等待用户补充信息节点
@@ -102,10 +103,12 @@ async def wait_user_node(state: AgentState) -> AgentState:
     for message in reversed(recent_tool_messages):
         if getattr(message, "name", None) != "ask_user":
             continue
-        try:
-            payload = json.loads(cast(str, message.content))
-        except (TypeError, json.JSONDecodeError):
-            payload = {}
+        payload = run_sync_with_retry(
+            "wait_user_node.ask_user_payload",
+            lambda: json.loads(cast(str, message.content)),
+            retry_exceptions=(TypeError, json.JSONDecodeError),
+            fallback={},
+        )
         if isinstance(payload, dict):
             field = str(payload.get("field") or field)
         break
@@ -130,12 +133,13 @@ async def agent_node(state: AgentState):
     prompt.extend(recent_messages)
     if structured_scenario:
         prompt.append(HumanMessage(structured_scenario))
-    try:
-        response = await model.ainvoke(prompt)
-        return {"messages": [response]}
-    except Exception as e:
-        logger.error(e)
+    response = await run_async_with_retry(
+        "agent_node.ainvoke",
+        lambda: model.ainvoke(prompt),
+    )
+    if response is None:
         return state
+    return {"messages": [response]}
 
 
 
@@ -186,10 +190,11 @@ async def turn_node(state: AgentState) -> AgentState:
     prompt.append(turn_prompt)
     prompt.append(SystemMessage("Please output valid JSON only."))
     prompt.append(HumanMessage(structured_scenario))
-    try:
-        raw_response = await model.ainvoke(prompt)
-    except Exception as e:
-        logger.error(e)
+    raw_response = await run_async_with_retry(
+        "turn_node.ainvoke",
+        lambda: model.ainvoke(prompt),
+    )
+    if raw_response is None:
         return state
     logger.info(f"turn_node -> {raw_response}")
     response = AlternativeActionList.model_validate(raw_response)
@@ -234,10 +239,11 @@ async def create_role_node(state: AgentState) -> AgentState:
     prompt.append(HumanMessage(structured_scenario))
     prompt.append(HumanMessage(chosen_action))
     model = get_nostream_model().with_structured_output(RoleplayList,method="json_mode")
-    try:
-        raw_roles_info = await model.ainvoke(prompt)
-    except Exception as e:
-        logger.error(e)
+    raw_roles_info = await run_async_with_retry(
+        "create_role_node.ainvoke",
+        lambda: model.ainvoke(prompt),
+    )
+    if raw_roles_info is None:
         return state
     logger.info(raw_roles_info)
     roles_info = RoleplayList.model_validate(raw_roles_info)
@@ -323,10 +329,12 @@ async def wait_for_interaction_node(state: AgentState) -> AgentState:
     for message in reversed(recent_tool_messages):
         if getattr(message, "name", None) != "interact_with_role":
             continue
-        try:
-            payload = json.loads(cast(str, message.content))
-        except (TypeError, json.JSONDecodeError):
-            payload = {}
+        payload = run_sync_with_retry(
+            "wait_for_interaction_node.interact_payload",
+            lambda: json.loads(cast(str, message.content)),
+            retry_exceptions=(TypeError, json.JSONDecodeError),
+            fallback={},
+        )
         if isinstance(payload, dict):
             field = str(payload.get("field") or field)
         break
@@ -404,8 +412,11 @@ async def judge_continue_node(state: AgentState) -> AgentState:
     prompt.extend(messages)
 
     text = "continue"
-    try:
-        response = await model.ainvoke(prompt)
+    response = await run_async_with_retry(
+        "judge_continue_node.ainvoke",
+        lambda: model.ainvoke(prompt),
+    )
+    if response is not None:
         if hasattr(response, "content"):
             content = response.content
             if isinstance(content, str):
@@ -414,8 +425,7 @@ async def judge_continue_node(state: AgentState) -> AgentState:
                 text = str(content).strip().lower()
         else:
             text = str(response).strip().lower()
-    except Exception as e:
-        logger.error(e)
+    else:
         text = "continue"
 
     if text not in {"continue", "end"}:
