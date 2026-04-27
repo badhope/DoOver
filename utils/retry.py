@@ -1,86 +1,129 @@
 # -*- coding: utf-8 -*-
-"""统一重试工具模块 (Unified Retry Utilities)。
-为同步与异步操作提供具备日志追踪能力的重试机制，支持失败时的优雅降级。
-Attributes:
-    MAX_RETRY_ATTEMPTS (int): 全局默认重试次数上限（含首次尝试），默认值为 ``3``。
-Functions:
-    run_async_with_retry: 异步函数重试包装器，适用于 LLM 调用、网络 IO 等场景。
-    run_sync_with_retry: 同步函数重试包装器，适用于计算任务、数据解析等场景。
-Example:
-    异步 HTTP 请求场景::
-    
-        import aiohttp
-        
-        async def fetch_user(uid: str) -> dict:
-            async with aiohttp.ClientSession() as session:
-                resp = await session.get(f"/api/users/{uid}")
-                return await resp.json()
-        
-        user_data = await run_async_with_retry(
-            operation_name="fetch_user_profile",
-            operation=lambda: fetch_user("12345"),
-            fallback={"error": "user_not_found"}
-        )
-    同步 JSON 解析场景::
-    
-        import json
-        
-        result = run_sync_with_retry(
-            operation_name="parse_event_payload",
-            operation=lambda: json.loads(raw_bytes),
-            retry_exceptions=(json.JSONDecodeError, UnicodeDecodeError),
-            fallback={}
-        )
-Note:
-    * 被包装函数必须为无参可调用对象。若需传递参数，请使用 ``functools.partial`` 
-      或 ``lambda`` 进行柯里化。
-    * 当重试次数耗尽时，函数返回 ``fallback`` 值而非抛出异常。调用方应检查
-      返回值以确认执行状态。
-    * 异步版本捕获所有 :class:`Exception` 子类；同步版本可通过 ``retry_exceptions`` 
-      参数精确控制可重试的异常类型。
-    * 本模块适用于临时性失败（网络抖动、服务超时），不适用于确定性错误
-      （参数校验失败、权限不足）。
-See Also:
-    * :mod:`tenacity`: 功能更完善的第三方重试库。
-    * :mod:`asyncio`: Python 异步 I/O 标准库。
+"""同步与异步操作的重试包装。
+
+提供了两个公开函数和一种异常类型：
+
+    run_async_with_retry    异步重试，默认通过指数退避最多尝试 3 次
+    run_sync_with_retry     同步重试，同上
+    RetryExhaustedError     重试次数耗尽时抛出
+
+两种失败处理模式：
+
+1. 不传 fallback（默认）
+   耗尽重试后抛出 RetryExhaustedError，由上层决定如何处理。
+
+2. 传入 fallback
+   耗尽重试后返回 fallback 值并记录 warning 日志。适合有合理降级策略
+   的场景（例如 LLM 调用失败后返回空字符串继续流程）。
+
+两个函数均通过 retry_exceptions 参数精确控制哪些异常可重试，
+避免对参数校验错误等确定性失败做无意义重试。
 """
 
+import asyncio
 from typing import Awaitable, Callable, TypeVar
 
 from utils.logger import logger
 
 T = TypeVar("T")
 MAX_RETRY_ATTEMPTS = 3
+BASE_DELAY_SECONDS = 1.0
+
+# 哨兵：当 fallback 未传入时，表示"不降级，直接抛出异常"
+_NO_FALLBACK: object = object()
 
 
-def log_retry_failure(operation_name: str, attempt: int, error: Exception) -> None:
-    logger.error(f"{operation_name} failed ({attempt}/{MAX_RETRY_ATTEMPTS}): {error}")
-    if attempt < MAX_RETRY_ATTEMPTS:
-        logger.info(f"{operation_name} retrying ({attempt + 1}/{MAX_RETRY_ATTEMPTS})")
+class RetryExhaustedError(Exception):
+    """重试次数耗尽后抛出的异常。"""
+
+    def __init__(self, operation_name: str, attempts: int, last_error: Exception) -> None:
+        self.operation_name = operation_name
+        self.attempts = attempts
+        self.last_error = last_error
+        super().__init__(
+            f"{operation_name} 在 {attempts} 次尝试后仍然失败，最后错误: {last_error}"
+        )
+
+
+def _delay_seconds(attempt: int) -> float:
+    """指数退避：第 2 次等 1s，第 3 次等 2s。"""
+    return BASE_DELAY_SECONDS * (2 ** (attempt - 2))
 
 
 async def run_async_with_retry(
     operation_name: str,
     operation: Callable[[], Awaitable[T]],
-    fallback: T | None = None,
-) -> T | None:
+    *,
+    retry_exceptions: tuple[type[Exception], ...] = (Exception,),
+    fallback: T | object = _NO_FALLBACK,
+) -> T:
+    """异步重试包装器。
+
+    耗尽重试次数后：
+    - 若调用方传入了 fallback，返回 fallback 并记 warning
+    - 否则抛出 RetryExhaustedError
+
+    Example:
+        result = await run_async_with_retry(
+            "fetch_user",
+            lambda: fetch_user(uid),
+            retry_exceptions=(aiohttp.ClientError, asyncio.TimeoutError),
+        )
+    """
+    last_error: Exception | None = None
+
     for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
         try:
             return await operation()
-        except Exception as error:
-            log_retry_failure(operation_name, attempt, error)
-    return fallback
+        except retry_exceptions as error:
+            last_error = error
+            logger.warning(
+                f"{operation_name} 第 {attempt}/{MAX_RETRY_ATTEMPTS} 次失败: {error}"
+            )
+            if attempt < MAX_RETRY_ATTEMPTS:
+                await asyncio.sleep(_delay_seconds(attempt))
+
+    if fallback is not _NO_FALLBACK:
+        logger.warning(
+            f"{operation_name} 已耗尽 {MAX_RETRY_ATTEMPTS} 次重试，使用降级值: {fallback!r}"
+        )
+        return fallback  # type: ignore[return-value]
+
+    raise RetryExhaustedError(operation_name, MAX_RETRY_ATTEMPTS, last_error)  # type: ignore[arg-type]
 
 
 def run_sync_with_retry(
     operation_name: str,
     operation: Callable[[], T],
+    *,
     retry_exceptions: tuple[type[Exception], ...] = (Exception,),
-    fallback: T | None = None,
-) -> T | None:
+    fallback: T | object = _NO_FALLBACK,
+) -> T:
+    """同步重试包装器。
+
+    耗尽重试次数后：
+    - 若调用方传入了 fallback，返回 fallback 并记 warning
+    - 否则抛出 RetryExhaustedError
+    """
+    import time
+
+    last_error: Exception | None = None
+
     for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
         try:
             return operation()
         except retry_exceptions as error:
-            log_retry_failure(operation_name, attempt, error)
-    return fallback
+            last_error = error
+            logger.warning(
+                f"{operation_name} 第 {attempt}/{MAX_RETRY_ATTEMPTS} 次失败: {error}"
+            )
+            if attempt < MAX_RETRY_ATTEMPTS:
+                time.sleep(_delay_seconds(attempt))
+
+    if fallback is not _NO_FALLBACK:
+        logger.warning(
+            f"{operation_name} 已耗尽 {MAX_RETRY_ATTEMPTS} 次重试，使用降级值: {fallback!r}"
+        )
+        return fallback  # type: ignore[return-value]
+
+    raise RetryExhaustedError(operation_name, MAX_RETRY_ATTEMPTS, last_error)  # type: ignore[arg-type]

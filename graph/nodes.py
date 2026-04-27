@@ -136,6 +136,7 @@ async def agent_node(state: AgentState):
     response = await run_async_with_retry(
         "agent_node.ainvoke",
         lambda: model.ainvoke(prompt),
+        fallback=None,
     )
     if response is None:
         return state
@@ -193,6 +194,7 @@ async def turn_node(state: AgentState) -> AgentState:
     raw_response = await run_async_with_retry(
         "turn_node.ainvoke",
         lambda: model.ainvoke(prompt),
+        fallback=None,
     )
     if raw_response is None:
         return state
@@ -242,6 +244,7 @@ async def create_role_node(state: AgentState) -> AgentState:
     raw_roles_info = await run_async_with_retry(
         "create_role_node.ainvoke",
         lambda: model.ainvoke(prompt),
+        fallback=None,
     )
     if raw_roles_info is None:
         return state
@@ -415,6 +418,7 @@ async def judge_continue_node(state: AgentState) -> AgentState:
     response = await run_async_with_retry(
         "judge_continue_node.ainvoke",
         lambda: model.ainvoke(prompt),
+        fallback=None,
     )
     if response is not None:
         if hasattr(response, "content"):

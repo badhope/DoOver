@@ -2478,8 +2478,8 @@ html, body {
     rgba(24, 24, 27, 0.92) 290deg,
     rgba(24, 24, 27, 1) 360deg
   );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0);
-  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0);
   animation: provider-test-spin 0.9s linear infinite;
 }
 
