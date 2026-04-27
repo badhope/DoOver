@@ -4,3 +4,4 @@ llm/config/provider.json
 tools/config/tools.json
 
 .claude/settings.local.json
+.zed/debug.json

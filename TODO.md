@@ -1,7 +1,9 @@
 # ToDo
 
 ## 配置持久化
-在模型列表列出的模型中新增一个按钮<template>
+
+```vue
+<template>
   <!-- 最简写法 -->
   <v-icon>mdi-connection</v-icon>
   
@@ -15,7 +17,11 @@
 <script setup>
 // Vuetify 3 需要导入 MDI
 import { mdiConnection } from '@mdi/js'
-</script> 图标  在后端新增一个test_model的api 点击后进行测试(发送消息)并在前端展示结果同时后端要有logging.info  
+</script>
+```
+
+图标  在后端新增一个test_model的api 点击后进行测试(发送消息)并在前端展示结果同时后端要有logging.info  
+
 1. 新增一个data目录,用于持久化用户数据
 2. 当前每个json配置是在对应的目录下,不方便持久化用户数据,
 后续将会迁移到data目录下
@@ -40,4 +46,3 @@ import { mdiConnection } from '@mdi/js'
 ## 其他功能
 
 1. skills扩展能力
-

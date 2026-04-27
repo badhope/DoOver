@@ -1,8 +1,7 @@
 import asyncio
 import json
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from functools import partial
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -29,10 +28,17 @@ from llm.config.provider import get_config_list
 from user.update_name_pswd import update_username_and_password
 from utils.load_config import load_json_config, save_json_config
 from utils.logger import logger
+from utils.session import (
+    AUTH_COOKIE_KEY,
+    create_login_token,
+    load_user_conf,
+    resolve_user_from_token,
+    revoke_token,
+)
 from utils.websocket import (
     create_session,
-    get_session_subscriber_count,
     get_session_meta,
+    get_session_subscriber_count,
     push_client_message,
     receive_session_event,
     reset_current_session,
@@ -40,13 +46,6 @@ from utils.websocket import (
     set_session_meta,
     subscribe_session,
     unsubscribe_session,
-)
-from utils.session import (
-    AUTH_COOKIE_KEY,
-    create_login_token,
-    load_user_conf,
-    resolve_user_from_token,
-    revoke_token,
 )
 
 APPS = {
@@ -70,6 +69,7 @@ FRONTEND_ORIGINS = [
 class LoginBody(BaseModel):
     username: str
     password: str
+
 
 class ActivateLLMBody(BaseModel):
     provider: str
@@ -111,7 +111,6 @@ class DeleteProviderBody(BaseModel):
     provider: str
 
 
-
 class DeleteModelBody(BaseModel):
     provider: str
     model: str
@@ -123,6 +122,7 @@ class TestModelBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model: str
+
 
 def _normalize_app_key(app_key: str) -> str:
     key = str(app_key or "").strip().lower()
@@ -172,9 +172,11 @@ async def run_session(session_id: str) -> None:
             if not text:
                 continue
 
-            app_key = str(
-                get_session_meta(session_id, "app_key", DEFAULT_APP_KEY)
-            ).strip().lower()
+            app_key = (
+                str(get_session_meta(session_id, "app_key", DEFAULT_APP_KEY))
+                .strip()
+                .lower()
+            )
             graph_app = APPS.get(app_key, APPS[DEFAULT_APP_KEY])
             logger.info(
                 f"session worker handling user_input: session_id={session_id}, app={app_key}"
@@ -209,7 +211,9 @@ def _on_session_worker_done(session_id: str, task: asyncio.Task[None]) -> None:
     if exc is None:
         logger.info(f"session worker done(clean): session_id={session_id}")
     else:
-        logger.error(f"session worker done(error): session_id={session_id}, error={exc}")
+        logger.error(
+            f"session worker done(error): session_id={session_id}, error={exc}"
+        )
 
 
 def ensure_session_worker(session_id: str, app_key: str) -> asyncio.Task[None]:
@@ -254,6 +258,7 @@ async def stop_session_workers() -> None:
 
     _session_workers.clear()
 
+
 async def cancel_session_worker_if_no_subscribers(session_id: str) -> None:
     subscribers = get_session_subscriber_count(session_id)
     if subscribers > 0:
@@ -264,11 +269,15 @@ async def cancel_session_worker_if_no_subscribers(session_id: str) -> None:
 
     worker = _session_workers.get(session_id)
     if worker is None:
-        logger.info(f"skip cancel session worker: session_id={session_id}, reason=no_worker")
+        logger.info(
+            f"skip cancel session worker: session_id={session_id}, reason=no_worker"
+        )
         return
 
     if worker.done():
-        logger.info(f"skip cancel session worker: session_id={session_id}, reason=already_done")
+        logger.info(
+            f"skip cancel session worker: session_id={session_id}, reason=already_done"
+        )
         return
 
     logger.info(f"cancel session worker: session_id={session_id}, subscribers=0")
@@ -334,7 +343,9 @@ async def ws_by_app(
                 raise ValueError("auth websocket requires login")
         ensure_session_worker(normalized_session, normalized_app)
     except (RuntimeError, ValueError) as exc:
-        logger.warning(f"ws rejected: app={app_key}, session_id={session_id}, error={exc}")
+        logger.warning(
+            f"ws rejected: app={app_key}, session_id={session_id}, error={exc}"
+        )
         await ws.close(code=1008, reason=str(exc))
         return
 
@@ -413,7 +424,8 @@ async def logout(request: Request, response: Response) -> dict[str, bool]:
     response.delete_cookie(key=AUTH_COOKIE_KEY, path="/")
     return {"ok": True}
 
-#修改用户名密码
+
+# 修改用户名密码
 @app.put("/update_user")
 async def update_user(request: Request, user: LoginBody) -> dict[str, bool]:
     token = await _require_login_token(request)
@@ -422,6 +434,7 @@ async def update_user(request: Request, user: LoginBody) -> dict[str, bool]:
     except Exception as e:
         raise e
     return {"ok": True}
+
 
 PROVIDER_CONFIG_PATH = Path("llm/config/provider.json")
 
@@ -433,7 +446,9 @@ def _build_openai_models_url(base_url: str) -> str:
 
     parsed = urlsplit(normalized)
     if not parsed.scheme or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="base_url must be a valid absolute URL")
+        raise HTTPException(
+            status_code=400, detail="base_url must be a valid absolute URL"
+        )
 
     path = parsed.path.rstrip("/")
     if not path:
@@ -441,7 +456,9 @@ def _build_openai_models_url(base_url: str) -> str:
     elif not path.endswith("/v1"):
         path = f"{path}/v1"
 
-    return urlunsplit((parsed.scheme, parsed.netloc, f"{path}/models", parsed.query, parsed.fragment))
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, f"{path}/models", parsed.query, parsed.fragment)
+    )
 
 
 async def _discover_openai_models(base_url: str, api_key: str) -> list[str]:
@@ -453,11 +470,18 @@ async def _discover_openai_models(base_url: str, api_key: str) -> list[str]:
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(request_url, headers=headers, allow_redirects=True) as response:
+            async with session.get(
+                request_url, headers=headers, allow_redirects=True
+            ) as response:
                 if response.status >= 400:
                     detail = await response.text()
-                    message = detail.strip() or f"request failed with status {response.status}"
-                    raise HTTPException(status_code=400, detail=f"获取模型列表失败：{message}")
+                    message = (
+                        detail.strip()
+                        or f"request failed with status {response.status}"
+                    )
+                    raise HTTPException(
+                        status_code=400, detail=f"获取模型列表失败：{message}"
+                    )
 
                 try:
                     payload = await response.json()
@@ -470,7 +494,9 @@ async def _discover_openai_models(base_url: str, api_key: str) -> list[str]:
     except HTTPException:
         raise
     except aiohttp.ClientError as error:
-        raise HTTPException(status_code=400, detail=f"获取模型列表失败：{error}") from error
+        raise HTTPException(
+            status_code=400, detail=f"获取模型列表失败：{error}"
+        ) from error
     except asyncio.TimeoutError as error:
         raise HTTPException(status_code=400, detail="获取模型列表超时") from error
 
@@ -517,7 +543,9 @@ def _extract_model_response_text(response: Any) -> str:
     return str(content).strip()
 
 
-def _resolve_test_model_config(payload: TestModelBody) -> tuple[str, str, str, str, str]:
+def _resolve_test_model_config(
+    payload: TestModelBody,
+) -> tuple[str, str, str, str, str]:
     provider_name = str(payload.provider or "").strip()
     provider_type = str(payload.type or "").strip().lower()
     base_url = str(payload.base_url or "").strip()
@@ -555,7 +583,8 @@ def _resolve_test_model_config(payload: TestModelBody) -> tuple[str, str, str, s
 
     return provider_name, provider_type, base_url, api_key, model_name
 
-#更换llm_model
+
+# 更换llm_model
 @app.put("/update_llm")
 async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, str]:
     await _require_login_token(request)
@@ -587,7 +616,6 @@ async def update_llm(request: Request, payload: ActivateLLMBody) -> dict[str, st
     save_json_config(PROVIDER_CONFIG_PATH, data)
 
     return {"provider": provider, "model": model}
-
 
 
 async def _require_login_token(request: Request) -> str:
@@ -639,7 +667,9 @@ async def llm_provider_types(request: Request) -> dict[str, Any]:
 async def test_model(request: Request, payload: TestModelBody) -> dict[str, Any]:
     await _require_login_token(request)
 
-    provider_name, provider_type, base_url, api_key, model_name = _resolve_test_model_config(payload)
+    provider_name, provider_type, base_url, api_key, model_name = (
+        _resolve_test_model_config(payload)
+    )
     logger.info(
         f"test_model start: provider={provider_name}, type={provider_type}, model={model_name}, base_url={base_url}"
     )
@@ -705,7 +735,9 @@ async def discover_llm_models(
         models = await _discover_openai_models(payload.base_url, api_key)
         return {"type": provider_type, "models": models}
 
-    raise HTTPException(status_code=400, detail=f"unsupported provider type: {provider_type}")
+    raise HTTPException(
+        status_code=400, detail=f"unsupported provider type: {provider_type}"
+    )
 
 
 @app.post("/discover_provider_models")
@@ -732,7 +764,11 @@ async def discover_provider_models(
     base_url = str(provider_conf.get("base_url") or "").strip()
     api_key = str(provider_conf.get("api_key") or "").strip()
     configured_models = provider_conf.get("models")
-    safe_configured_models = [str(m).strip() for m in configured_models] if isinstance(configured_models, list) else []
+    safe_configured_models = (
+        [str(m).strip() for m in configured_models]
+        if isinstance(configured_models, list)
+        else []
+    )
 
     if not api_key:
         raise HTTPException(status_code=400, detail="provider api_key is missing")
@@ -746,11 +782,15 @@ async def discover_provider_models(
             "configured_models": [m for m in safe_configured_models if m],
         }
 
-    raise HTTPException(status_code=400, detail=f"unsupported provider type: {provider_type}")
+    raise HTTPException(
+        status_code=400, detail=f"unsupported provider type: {provider_type}"
+    )
 
 
 @app.put("/add_llm_provider")
-async def add_llm_provider(request: Request, payload: AddProviderBody) -> dict[str, str]:
+async def add_llm_provider(
+    request: Request, payload: AddProviderBody
+) -> dict[str, str]:
     await _require_login_token(request)
 
     provider = payload.provider.strip()
@@ -785,7 +825,9 @@ async def add_llm_provider(request: Request, payload: AddProviderBody) -> dict[s
 
 
 @app.put("/update_llm_provider")
-async def update_llm_provider(request: Request, payload: UpdateProviderBody) -> dict[str, str]:
+async def update_llm_provider(
+    request: Request, payload: UpdateProviderBody
+) -> dict[str, str]:
     await _require_login_token(request)
 
     provider = payload.provider.strip()
@@ -844,7 +886,9 @@ async def add_llm_model(request: Request, payload: AddModelBody) -> dict[str, st
 
 
 @app.delete("/delete_llm_provider")
-async def delete_llm_provider(request: Request, payload: DeleteProviderBody) -> dict[str, str]:
+async def delete_llm_provider(
+    request: Request, payload: DeleteProviderBody
+) -> dict[str, str]:
     await _require_login_token(request)
 
     provider = payload.provider.strip()
@@ -869,7 +913,9 @@ async def delete_llm_provider(request: Request, payload: DeleteProviderBody) -> 
 
 
 @app.delete("/delete_llm_model")
-async def delete_llm_model(request: Request, payload: DeleteModelBody) -> dict[str, str]:
+async def delete_llm_model(
+    request: Request, payload: DeleteModelBody
+) -> dict[str, str]:
     await _require_login_token(request)
 
     provider = payload.provider.strip()
@@ -888,19 +934,20 @@ async def delete_llm_model(request: Request, payload: DeleteModelBody) -> dict[s
         raise HTTPException(status_code=400, detail="model not found")
 
     if len(models) <= 1:
-        raise HTTPException(status_code=400, detail="cannot delete last model in provider")
+        raise HTTPException(
+            status_code=400, detail="cannot delete last model in provider"
+        )
 
     active_provider = str(data.get("active_llm_provider") or "").strip()
     active_model = str(data.get("active_llm_model") or "").strip()
     if active_provider == provider and active_model == model:
-        logger.print(
-            f"reject delete active model: provider={provider}, model={model}"
-        )
+        logger.print(f"reject delete active model: provider={provider}, model={model}")
         raise HTTPException(status_code=400, detail="model is currently active")
 
     models.remove(model)
     save_json_config(PROVIDER_CONFIG_PATH, data)
     return {"provider": provider, "deleted_model": model}
+
 
 if __name__ == "__main__":
     uvicorn.run("test:app", host="0.0.0.0", port=8000, reload=False)
